@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#090d16" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    <linearGradient id="neonGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f43f5e" />
+      <stop offset="45%" stop-color="#fb7185" />
+      <stop offset="75%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+    <linearGradient id="ticketGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f43f5e" />
+      <stop offset="100%" stop-color="#e11d48" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="16" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Squircle -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  <rect width="504" height="504" x="4" y="4" rx="108" fill="none" stroke="url(#neonGrad)" stroke-width="6" opacity="0.8" />
+
+  <!-- Ambient Glow Behind Reel -->
+  <circle cx="256" cy="256" r="140" fill="#f43f5e" opacity="0.18" filter="url(#glow)" />
+  <circle cx="290" cy="230" r="110" fill="#fbbf24" opacity="0.15" filter="url(#glow)" />
+
+  <!-- Outer Film Reel Rim -->
+  <circle cx="256" cy="246" r="150" fill="none" stroke="url(#neonGrad)" stroke-width="14" />
+  
+  <!-- Film Sprocket Holes Around the Rim -->
+  <g fill="#020617" stroke="url(#neonGrad)" stroke-width="3">
+    <circle cx="256" cy="116" r="13" />
+    <circle cx="348" cy="154" r="13" />
+    <circle cx="386" cy="246" r="13" />
+    <circle cx="348" cy="338" r="13" />
+    <circle cx="256" cy="376" r="13" />
+    <circle cx="164" cy="338" r="13" />
+    <circle cx="126" cy="246" r="13" />
+    <circle cx="164" cy="154" r="13" />
+  </g>
+
+  <!-- Central Hub -->
+  <circle cx="256" cy="246" r="82" fill="#090d16" stroke="url(#neonGrad)" stroke-width="6" />
+
+  <!-- Duo Matching Heart in Center -->
+  <path d="M256,220 C242,192 205,190 190,214 C170,246 200,282 256,316 C312,282 342,246 322,214 C307,190 270,192 256,220 Z" 
+        fill="url(#neonGrad)" 
+        filter="url(#glow)" />
+
+  <!-- Movie Play Arrow inside Heart -->
+  <polygon points="248,236 272,252 248,268" fill="#ffffff" />
+
+  <!-- Cinema Ticket 1 (Bottom Left) -->
+  <g transform="translate(100, 340) rotate(-18)">
+    <rect width="90" height="52" rx="10" fill="#e11d48" opacity="0.95" />
+    <circle cx="0" cy="26" r="12" fill="#020617" />
+    <circle cx="90" cy="26" r="12" fill="#020617" />
+    <line x1="28" y1="12" x2="28" y2="40" stroke="#020617" stroke-width="2" stroke-dasharray="3,3" />
+    <text x="38" y="32" font-family="system-ui, sans-serif" font-size="15" font-weight="900" fill="#ffffff">YOU</text>
+  </g>
+
+  <!-- Cinema Ticket 2 (Bottom Right) -->
+  <g transform="translate(325, 315) rotate(18)">
+    <rect width="90" height="52" rx="10" fill="#4f46e5" opacity="0.95" />
+    <circle cx="0" cy="26" r="12" fill="#020617" />
+    <circle cx="90" cy="26" r="12" fill="#020617" />
+    <line x1="28" y1="12" x2="28" y2="40" stroke="#020617" stroke-width="2" stroke-dasharray="3,3" />
+    <text x="42" y="32" font-family="system-ui, sans-serif" font-size="15" font-weight="900" fill="#ffffff">ME</text>
+  </g>
+
+  <!-- Sparkles / Stars -->
+  <g fill="#fbbf24">
+    <!-- Star 1 Top Right -->
+    <path d="M400,90 Q400,115 425,115 Q400,115 400,140 Q400,115 375,115 Q400,115 400,90 Z" />
+    <!-- Star 2 Top Left -->
+    <path d="M110,120 Q110,135 125,135 Q110,135 110,150 Q110,135 95,135 Q110,135 110,120 Z" />
+    <!-- Star 3 Center Top -->
+    <circle cx="256" cy="65" r="5" fill="#f43f5e" />
+  </g>
+</svg>

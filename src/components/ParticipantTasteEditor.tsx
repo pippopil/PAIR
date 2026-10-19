@@ -26,9 +26,51 @@ export const ParticipantTasteEditor: React.FC<ParticipantTasteEditorProps> = ({
   onApplyPreset,
 }) => {
   const [movieQuery, setMovieQuery] = useState('');
+  const [tmdbSearchResults, setTmdbSearchResults] = useState<any[]>([]);
+  const [isSearchingTmdb, setIsSearchingTmdb] = useState(false);
+  const [trendingMovies, setTrendingMovies] = useState<any[]>([]);
   const [actorInput, setActorInput] = useState('');
   const [customVetoInput, setCustomVetoInput] = useState('');
   const [showPresetsMenu, setShowPresetsMenu] = useState(false);
+
+  // Fetch trending movies on mount for quick inspiration
+  React.useEffect(() => {
+    fetch('/api/tmdb/trending')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.results && Array.isArray(data.results)) {
+          setTrendingMovies(data.results);
+        }
+      })
+      .catch((e) => console.warn('Could not load trending:', e));
+  }, []);
+
+  // Live dynamic TMDB search with debounce
+  React.useEffect(() => {
+    const trimmed = movieQuery.trim();
+    if (trimmed.length < 2) {
+      setTmdbSearchResults([]);
+      setIsSearchingTmdb(false);
+      return;
+    }
+
+    setIsSearchingTmdb(true);
+    const timer = setTimeout(() => {
+      fetch(`/api/tmdb/search?query=${encodeURIComponent(trimmed)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          setTmdbSearchResults(data.results || []);
+        })
+        .catch((err) => {
+          console.warn('TMDB search error:', err);
+        })
+        .finally(() => {
+          setIsSearchingTmdb(false);
+        });
+    }, 280);
+
+    return () => clearTimeout(timer);
+  }, [movieQuery]);
 
   // Genre toggle
   const toggleGenre = (genreName: string) => {
@@ -40,15 +82,19 @@ export const ParticipantTasteEditor: React.FC<ParticipantTasteEditorProps> = ({
   };
 
   // Add favorite movie
-  const addMovie = (movie: { id: string; title: string; year?: number }) => {
+  const addMovie = (movie: { id: string; title: string; year?: number; posterUrl?: string }) => {
     const current = participant.favoriteMovies || [];
     if (!current.some((m) => m.id === movie.id || m.title.toLowerCase() === movie.title.toLowerCase())) {
       onUpdate({
         ...participant,
-        favoriteMovies: [...current, { id: movie.id, title: movie.title, year: movie.year }],
+        favoriteMovies: [
+          ...current,
+          { id: movie.id, title: movie.title, year: movie.year, posterUrl: movie.posterUrl },
+        ],
       });
     }
     setMovieQuery('');
+    setTmdbSearchResults([]);
   };
 
   const removeMovie = (id: string) => {
@@ -260,32 +306,94 @@ export const ParticipantTasteEditor: React.FC<ParticipantTasteEditorProps> = ({
             )}
           </div>
 
-          {/* Autocomplete dropdown */}
-          {filteredCatalogMovies.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1.5 bg-slate-950 border border-slate-800 rounded-xl p-1.5 shadow-2xl z-20 space-y-1">
-              {filteredCatalogMovies.map((m) => (
+          {/* Dynamic TMDB Autocomplete dropdown */}
+          {movieQuery.trim().length >= 2 && (
+            <div className="absolute top-full left-0 right-0 mt-1.5 bg-slate-950 border border-slate-800 rounded-2xl p-2 shadow-2xl z-30 max-h-80 overflow-y-auto space-y-1">
+              <div className="flex items-center justify-between px-2 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                <span>{isSearchingTmdb ? 'Ищем по базе TMDB...' : 'Результаты поиска TMDB:'}</span>
+                {isSearchingTmdb && <span className="animate-spin text-rose-500">⏳</span>}
+              </div>
+
+              {tmdbSearchResults.map((m) => (
                 <button
                   key={m.id}
                   type="button"
                   onClick={() => addMovie(m)}
-                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-900 flex items-center justify-between text-xs text-slate-200"
+                  className="w-full text-left p-2 rounded-xl hover:bg-slate-900 flex items-center justify-between gap-2.5 transition-colors group"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">{m.title}</span>
-                    <span className="text-[11px] text-slate-400 font-mono">({m.year})</span>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <img
+                      src={m.posterUrl}
+                      alt={m.title}
+                      className="w-8 h-12 object-cover rounded-md shrink-0 bg-slate-900 border border-slate-800"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-xs text-slate-200 group-hover:text-rose-300 truncate">
+                          {m.title}
+                        </span>
+                        {m.year && (
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            ({m.year})
+                          </span>
+                        )}
+                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 uppercase font-semibold">
+                          {m.type === 'series' ? 'Сериал' : 'Фильм'}
+                        </span>
+                      </div>
+                      {m.originalTitle && m.originalTitle !== m.title && (
+                        <p className="text-[10px] text-slate-500 truncate">
+                          {m.originalTitle}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-[10px] text-amber-400 font-bold">★ {m.ratingKp}</span>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    {m.rating && (
+                      <span className="text-[10px] text-amber-400 font-bold">
+                        ★ {m.rating}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-rose-400 font-bold px-1.5 py-0.5 rounded bg-rose-500/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                      + Добавить
+                    </span>
+                  </div>
                 </button>
               ))}
+
+              {!isSearchingTmdb && tmdbSearchResults.length === 0 && (
+                <div className="p-3 text-center text-xs text-slate-400 space-y-1.5">
+                  <p>По запросу «{movieQuery}» ничего не найдено.</p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      addMovie({
+                        id: `custom-${Date.now()}`,
+                        title: movieQuery.trim(),
+                        year: new Date().getFullYear(),
+                      })
+                    }
+                    className="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs"
+                  >
+                    + Добавить «{movieQuery.trim()}» вручную
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {/* Quick popular recommendations to click */}
+        {/* Dynamic Trending / Popular movies row from TMDB */}
         <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
-          <span className="text-[11px] text-slate-500">Быстро добавить:</span>
-          {CURATED_CATALOG.slice(0, 5).map((m) => {
-            const isAdded = (participant.favoriteMovies || []).some((fm) => fm.id === m.id);
+          <span className="text-[11px] text-slate-500 flex items-center gap-1">
+            <Flame className="w-3 h-3 text-amber-400" />
+            <span>В тренде TMDB:</span>
+          </span>
+          {(trendingMovies.length > 0 ? trendingMovies : CURATED_CATALOG).slice(0, 6).map((m) => {
+            const isAdded = (participant.favoriteMovies || []).some(
+              (fm) => fm.id === m.id || fm.title.toLowerCase() === m.title.toLowerCase()
+            );
             if (isAdded) return null;
             return (
               <button

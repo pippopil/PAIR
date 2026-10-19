@@ -5,6 +5,7 @@ import { ParticipantTasteEditor } from './components/ParticipantTasteEditor';
 import { MoodAndFilters } from './components/MoodAndFilters';
 import { MovieCard } from './components/MovieCard';
 import { BlitzMatchModal } from './components/BlitzMatchModal';
+import { RouletteModal } from './components/RouletteModal';
 import { WatchlistDrawer } from './components/WatchlistDrawer';
 import { Confetti } from './components/Confetti';
 import { UserParticipant, MovieRecommendation, SessionFilterOptions } from './types';
@@ -20,6 +21,7 @@ import {
   ChevronRight,
   ShieldCheck,
   Zap,
+  Dices,
 } from 'lucide-react';
 
 const INITIAL_PARTICIPANTS: UserParticipant[] = [
@@ -79,6 +81,7 @@ export default function App() {
 
   // Modals & Effects
   const [isBlitzOpen, setIsBlitzOpen] = useState<boolean>(false);
+  const [isRouletteOpen, setIsRouletteOpen] = useState<boolean>(false);
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
   const [hasCopied, setHasCopied] = useState<boolean>(false);
   const [bannedTitles, setBannedTitles] = useState<string[]>([]);
@@ -259,6 +262,7 @@ export default function App() {
         roomCode={filters.roomCode}
         watchlistCount={watchlist.length}
         onOpenWatchlist={() => setIsWatchlistOpen(true)}
+        onOpenRoulette={() => setIsRouletteOpen(true)}
         onShareRoom={handleShareRoom}
         hasCopied={hasCopied}
       />
@@ -356,16 +360,29 @@ export default function App() {
             )}
           </button>
 
-          {/* Rapid Blitz button */}
+          {/* Rapid Blitz & Roulette buttons */}
           {recommendations.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setIsBlitzOpen(true)}
-              className="w-full sm:w-auto px-5 py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-rose-300 font-heading font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-lg"
-            >
-              <Flame className="w-4 h-4 text-rose-500" />
-              <span>Быстрый блиц-раунд (Tinder-батл) 🔥</span>
-            </button>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setIsBlitzOpen(true)}
+                className="flex-1 sm:flex-initial px-4 py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-rose-300 font-heading font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-lg"
+                title="Быстрый свайп-батл на двоих"
+              >
+                <Flame className="w-4 h-4 text-rose-500" />
+                <span>Блиц-раунд 🔥</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsRouletteOpen(true)}
+                className="flex-1 sm:flex-initial px-4 py-4 rounded-2xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-heading font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-lg"
+                title="Случайный выбор из лучших компромиссов"
+              >
+                <Dices className="w-4 h-4 text-amber-400" />
+                <span>Кинорулетка 🎰</span>
+              </button>
+            </div>
           )}
         </section>
 
@@ -447,6 +464,14 @@ export default function App() {
         movies={recommendations}
         participants={participants}
         onSelectFinalWinner={handleSelectAsChoice}
+      />
+
+      {/* Roulette Modal */}
+      <RouletteModal
+        isOpen={isRouletteOpen}
+        onClose={() => setIsRouletteOpen(false)}
+        movies={recommendations}
+        onSelectWinner={handleSelectAsChoice}
       />
 
       {/* Watchlist Drawer */}

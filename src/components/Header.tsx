@@ -7,6 +7,7 @@ interface HeaderProps {
   roomCode: string;
   watchlistCount: number;
   onOpenWatchlist: () => void;
+  onOpenRoulette?: () => void;
   onShareRoom: () => void;
   hasCopied: boolean;
 }
@@ -17,6 +18,7 @@ export const Header: React.FC<HeaderProps> = ({
   roomCode,
   watchlistCount,
   onOpenWatchlist,
+  onOpenRoulette,
   onShareRoom,
   hasCopied,
 }) => {
@@ -25,8 +27,8 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
         {/* Logo */}
         <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-rose-500/20">
-            <Film className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 rounded-xl bg-slate-950 border border-rose-500/30 flex items-center justify-center shadow-lg shadow-rose-500/20 overflow-hidden shrink-0">
+            <img src="/icon.svg" alt="KinoMatch" className="w-full h-full object-cover" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
@@ -34,7 +36,7 @@ export const Header: React.FC<HeaderProps> = ({
                 KinoMatch
               </span>
               <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                AI Duo
+                TMDB Live
               </span>
             </div>
             <p className="text-[11px] text-slate-400 hidden sm:block">Кинокомпромисс для двоих и компаний</p>

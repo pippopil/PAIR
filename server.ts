@@ -349,6 +349,198 @@ ${JSON.stringify(participantSummary, null, 2)}
   }
 });
 
+// TMDB Genre ID to Russian Name mapping
+const TMDB_GENRES_MAP: Record<number, string> = {
+  28: 'Боевик',
+  12: 'Приключения',
+  16: 'Анимация',
+  35: 'Комедия',
+  80: 'Криминал',
+  99: 'Документальный',
+  18: 'Драма',
+  10751: 'Семейный',
+  14: 'Фэнтези',
+  36: 'История',
+  27: 'Ужасы',
+  10402: 'Музыка',
+  9648: 'Детектив',
+  10749: 'Мелодрама',
+  878: 'Фантастика',
+  53: 'Триллер',
+  10752: 'Военный',
+  37: 'Вестерн',
+  10759: 'Боевик',
+  10765: 'Фантастика',
+};
+
+// Dynamic TMDB Search endpoint
+app.get('/api/tmdb/search', async (req: Request, res: Response) => {
+  const query = ((req.query.query as string) || (req.query.q as string) || '').trim();
+  const language = (req.query.language as string) || 'ru-RU';
+
+  if (!query) {
+    return res.json({ results: [] });
+  }
+
+  const tmdbKey = process.env.TMDB_API_KEY || process.env.TMDB_KEY || '';
+
+  // If TMDB key configured, call real TMDB API
+  if (tmdbKey) {
+    try {
+      const isBearerToken = tmdbKey.length > 50;
+      const url = `https://api.themoviedb.org/3/search/multi?query=${encodeURIComponent(
+        query
+      )}&include_adult=false&language=${encodeURIComponent(language)}&page=1${
+        isBearerToken ? '' : `&api_key=${tmdbKey}`
+      }`;
+
+      const headers: Record<string, string> = {
+        'Accept': 'application/json',
+      };
+      if (isBearerToken) {
+        headers['Authorization'] = `Bearer ${tmdbKey}`;
+      }
+
+      const response = await fetch(url, { headers });
+      if (response.ok) {
+        const data = await response.json();
+        const results = (data.results || [])
+          .filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv')
+          .map((item: any) => {
+            const isMovie = item.media_type === 'movie';
+            const title = isMovie ? item.title : item.name;
+            const originalTitle = isMovie ? item.original_title : item.original_name;
+            const dateStr = isMovie ? item.release_date : item.first_air_date;
+            const year = dateStr ? parseInt(dateStr.split('-')[0], 10) : undefined;
+            const genres = (item.genre_ids || [])
+              .map((id: number) => TMDB_GENRES_MAP[id])
+              .filter(Boolean);
+
+            const posterUrl = item.poster_path
+              ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
+              : 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=500&q=80';
+
+            return {
+              id: `tmdb-${item.id}`,
+              tmdbId: item.id,
+              title: title || originalTitle,
+              originalTitle: originalTitle || title,
+              year,
+              type: isMovie ? 'movie' : 'series',
+              genres: genres.length ? genres : ['Кино'],
+              rating: item.vote_average ? Number(item.vote_average.toFixed(1)) : 7.0,
+              posterUrl,
+              overview: item.overview || '',
+              source: 'tmdb',
+            };
+          });
+
+        return res.json({ source: 'tmdb_live', results });
+      }
+    } catch (tmdbError) {
+      console.warn('TMDB API request failed, falling back to local search engine:', tmdbError);
+    }
+  }
+
+  // Dynamic fallback search across local curated catalog + synthesized search matches
+  const lowerQuery = query.toLowerCase();
+  const matched = CURATED_CATALOG.filter(
+    (item) =>
+      item.title.toLowerCase().includes(lowerQuery) ||
+      item.originalTitle.toLowerCase().includes(lowerQuery) ||
+      item.genres.some((g) => g.toLowerCase().includes(lowerQuery)) ||
+      item.cast.some((c) => c.toLowerCase().includes(lowerQuery)) ||
+      item.director.toLowerCase().includes(lowerQuery)
+  ).map((item) => ({
+    id: item.id,
+    title: item.title,
+    originalTitle: item.originalTitle,
+    year: item.year,
+    type: item.type,
+    genres: item.genres,
+    rating: item.ratingKp,
+    posterUrl: item.posterUrl,
+    overview: item.description,
+    source: 'catalog',
+  }));
+
+  // If query didn't match existing catalog items, generate a synthesized title card so user can still add it!
+  if (matched.length === 0 && query.length >= 2) {
+    matched.push({
+      id: `custom-${Date.now()}`,
+      title: query,
+      originalTitle: query,
+      year: new Date().getFullYear(),
+      type: 'movie',
+      genres: ['Пользовательский выбор'],
+      rating: 8.0,
+      posterUrl: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=500&q=80',
+      overview: `Добавлено пользователем: ${query}`,
+      source: 'custom',
+    });
+  }
+
+  res.json({ source: 'local_engine', results: matched });
+});
+
+// Dynamic TMDB Trending / Popular endpoint
+app.get('/api/tmdb/trending', async (_req: Request, res: Response) => {
+  const tmdbKey = process.env.TMDB_API_KEY || process.env.TMDB_KEY || '';
+
+  if (tmdbKey) {
+    try {
+      const isBearerToken = tmdbKey.length > 50;
+      const url = `https://api.themoviedb.org/3/trending/all/week?language=ru-RU${
+        isBearerToken ? '' : `&api_key=${tmdbKey}`
+      }`;
+
+      const headers: Record<string, string> = { 'Accept': 'application/json' };
+      if (isBearerToken) {
+        headers['Authorization'] = `Bearer ${tmdbKey}`;
+      }
+
+      const response = await fetch(url, { headers });
+      if (response.ok) {
+        const data = await response.json();
+        const results = (data.results || []).slice(0, 10).map((item: any) => {
+          const isMovie = item.media_type === 'movie';
+          const title = isMovie ? item.title : item.name;
+          const originalTitle = isMovie ? item.original_title : item.original_name;
+          const dateStr = isMovie ? item.release_date : item.first_air_date;
+          const year = dateStr ? parseInt(dateStr.split('-')[0], 10) : undefined;
+          return {
+            id: `tmdb-${item.id}`,
+            title: title || originalTitle,
+            originalTitle: originalTitle || title,
+            year,
+            type: isMovie ? 'movie' : 'series',
+            rating: item.vote_average ? Number(item.vote_average.toFixed(1)) : 7.5,
+            posterUrl: item.poster_path
+              ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
+              : 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=500&q=80',
+          };
+        });
+        return res.json({ results });
+      }
+    } catch (e) {
+      console.warn('TMDB trending error:', e);
+    }
+  }
+
+  // Fallback to top curated items
+  res.json({
+    results: CURATED_CATALOG.slice(0, 8).map((m) => ({
+      id: m.id,
+      title: m.title,
+      originalTitle: m.originalTitle,
+      year: m.year,
+      type: m.type,
+      rating: m.ratingKp,
+      posterUrl: m.posterUrl,
+    })),
+  });
+});
+
 // Quick autocomplete & catalog search
 app.get('/api/search', (req: Request, res: Response) => {
   const query = ((req.query.q as string) || '').toLowerCase().trim();
@@ -372,6 +564,7 @@ app.get('/api/meta', (_req: Request, res: Response) => {
   res.json({
     platforms: PLATFORMS_LIST,
     catalogCount: CURATED_CATALOG.length,
+    tmdbConfigured: !!(process.env.TMDB_API_KEY || process.env.TMDB_KEY),
   });
 });
 
