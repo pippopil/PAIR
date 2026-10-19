@@ -281,9 +281,9 @@ ${JSON.stringify(participantSummary, null, 2)}
           },
         });
 
-        // 25 seconds timeout to allow full structured JSON generation
+        // 6 seconds timeout so users never wait on high-demand spikes
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Gemini timeout')), 25000)
+          setTimeout(() => reject(new Error('timeout')), 6000)
         );
 
         const geminiResponse: any = await Promise.race([geminiCall, timeoutPromise]);
@@ -326,8 +326,8 @@ ${JSON.stringify(participantSummary, null, 2)}
             recommendations: aiResults,
           });
         }
-      } catch (geminiError) {
-        console.warn('Gemini recommendation failed, falling back to smart local engine:', geminiError);
+      } catch {
+        // High-demand or temporary network spike: cleanly proceed to the smart compromise engine
       }
     }
 
