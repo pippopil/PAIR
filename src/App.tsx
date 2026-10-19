@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
+import { NavigationTabs, MainTabType } from './components/NavigationTabs';
+import { QuickMoodBar } from './components/QuickMoodBar';
 import { RoomParticipantTabs } from './components/RoomParticipantTabs';
 import { ParticipantTasteEditor } from './components/ParticipantTasteEditor';
-import { MoodAndFilters } from './components/MoodAndFilters';
+import { DiaryAndAchievementsTab } from './components/DiaryAndAchievementsTab';
 import { MovieCard } from './components/MovieCard';
 import { BlitzMatchModal } from './components/BlitzMatchModal';
 import { RouletteModal } from './components/RouletteModal';
@@ -18,22 +20,17 @@ import {
   DiaryEntry,
   AchievementBadge,
 } from './types';
-import { TASTE_PRESETS, TastePreset } from './data/presets';
-import { CURATED_CATALOG } from './data/catalog';
+import { TastePreset } from './data/presets';
 import { INITIAL_ACHIEVEMENTS } from './data/achievements';
 import {
   Sparkles,
-  Flame,
   RotateCcw,
-  CheckCircle,
   Film,
+  CheckCircle,
   Sliders,
-  ChevronRight,
-  ShieldCheck,
-  Zap,
   Dices,
-  BookOpen,
-  Trophy,
+  Flame,
+  ArrowRight,
 } from 'lucide-react';
 
 const INITIAL_PARTICIPANTS: UserParticipant[] = [
@@ -96,6 +93,7 @@ const INITIAL_DIARY: DiaryEntry[] = [
 ];
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState<MainTabType>('feed');
   const [participants, setParticipants] = useState<UserParticipant[]>(INITIAL_PARTICIPANTS);
   const [activeParticipantId, setActiveParticipantId] = useState<string>('user-1');
   const [filters, setFilters] = useState<SessionFilterOptions>(INITIAL_FILTERS);
@@ -103,7 +101,6 @@ export default function App() {
   // Recommendations state
   const [recommendations, setRecommendations] = useState<MovieRecommendation[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [hasCalculated, setHasCalculated] = useState<boolean>(false);
 
   // Watchlist & Selected
   const [watchlist, setWatchlist] = useState<MovieRecommendation[]>([]);
@@ -141,7 +138,6 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // Helper to unlock an achievement
   const unlockAchievement = (id: string) => {
     setAchievements((prev) =>
       prev.map((a) => {
@@ -155,7 +151,6 @@ export default function App() {
     );
   };
 
-  // Switch mode
   const handleModeChange = (mode: 'duo' | 'party') => {
     setFilters({ ...filters, mode });
     if (mode === 'duo' && participants.length > 2) {
@@ -164,7 +159,6 @@ export default function App() {
     }
   };
 
-  // Add party participant
   const handleAddParticipant = () => {
     if (participants.length >= 5) return;
     const newIdx = participants.length + 1;
@@ -184,7 +178,6 @@ export default function App() {
     showToast(`Участник ${newP.name} добавлен в комнату`);
   };
 
-  // Remove participant
   const handleRemoveParticipant = (id: string) => {
     if (participants.length <= 2) return;
     setParticipants(participants.filter((p) => p.id !== id));
@@ -193,12 +186,10 @@ export default function App() {
     }
   };
 
-  // Update participant
   const handleUpdateParticipant = (updated: UserParticipant) => {
     setParticipants(participants.map((p) => (p.id === updated.id ? updated : p)));
   };
 
-  // Apply taste preset
   const handleApplyPreset = (preset: TastePreset) => {
     setParticipants(
       participants.map((p) => {
@@ -222,10 +213,8 @@ export default function App() {
     showToast(`Пресет «${preset.name}» применён к профилю ${activeParticipant.name}!`);
   };
 
-  // Fetch recommendations
   const fetchRecommendations = async () => {
     setIsLoading(true);
-    setConfirmedChoice(null);
 
     try {
       const response = await fetch('/api/recommendations', {
@@ -251,26 +240,22 @@ export default function App() {
       );
 
       setRecommendations(list);
-      setHasCalculated(true);
 
-      // Check high match achievement
       if (list.some((m) => m.overallMatchScore >= 85)) {
         unlockAchievement('first-match');
       }
 
       showToast(`Подобрано ${list.length} компромиссных вариантов 🎯`);
-    } catch (err: any) {
-      console.warn('Error fetching recommendations, using curated fallback:', err);
+    } catch {
       showToast('Использован встроенный умный каталог');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Load initial recommendations on mount
   useEffect(() => {
     fetchRecommendations();
-  }, []);
+  }, [filters.targetType, filters.durationLimit]);
 
   // Sync state to local room in background (no VPN needed)
   useEffect(() => {
@@ -315,7 +300,6 @@ export default function App() {
       const movieMap = prev[movie.id] || {};
       const updatedMovieMap = { ...movieMap, [participantId]: rating };
 
-      // Check if both participants gave 5 stars
       if (participants.length >= 2) {
         const p1 = participants[0]?.id;
         const p2 = participants[1]?.id;
@@ -324,7 +308,6 @@ export default function App() {
         }
       }
 
-      // Check detective genre achievement
       if (movie.genres.some((g) => g.toLowerCase().includes('детектив'))) {
         unlockAchievement('detective-duo');
       }
@@ -343,7 +326,6 @@ export default function App() {
     setIsDiaryOpen(true);
   };
 
-  // Save diary entry
   const handleSaveDiaryEntry = (entry: DiaryEntry) => {
     const updated = [entry, ...diaryEntries];
     setDiaryEntries(updated);
@@ -359,19 +341,16 @@ export default function App() {
     showToast('Запись удалена из дневника');
   };
 
-  // Select as final choice of the night
   const handleSelectAsChoice = (movie: MovieRecommendation) => {
     setConfirmedChoice(movie);
     setShowConfetti(true);
     showToast(`Выбор вечера сделан: «${movie.title}»! Приятного просмотра 🎉`);
 
-    // Check roulette achievement if roulette was open
     if (isRouletteOpen) {
       unlockAchievement('roulette-luck');
     }
   };
 
-  // Toggle bookmark / watchlist
   const handleToggleBookmark = (movie: MovieRecommendation) => {
     if (watchlist.some((w) => w.id === movie.id)) {
       setWatchlist(watchlist.filter((w) => w.id !== movie.id));
@@ -382,7 +361,6 @@ export default function App() {
     }
   };
 
-  // Apply instant veto to movie
   const handleApplyInstantVeto = (movie: MovieRecommendation) => {
     setBannedTitles((prev) => [...prev, movie.id]);
     setRecommendations((prev) => prev.filter((m) => m.id !== movie.id));
@@ -390,229 +368,243 @@ export default function App() {
     showToast(`Фильм «${movie.title}» заблокирован вето и удален 🚫`);
   };
 
-  // Copy room link
   const handleShareRoom = () => {
     setIsShareModalOpen(true);
   };
 
+  const totalVetoesCount = participants.reduce(
+    (acc, p) => acc + (p.vetoes || []).length,
+    0
+  );
   const unlockedAchievementsCount = achievements.filter((a) => a.unlocked).length;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">
       <Confetti active={showConfetti} onComplete={() => setShowConfetti(false)} />
 
-      {/* Header */}
+      {/* Streamlined Minimal Header */}
       <Header
         mode={filters.mode}
         onModeChange={handleModeChange}
         roomCode={filters.roomCode}
         watchlistCount={watchlist.length}
-        diaryCount={diaryEntries.length}
-        unlockedAchievementsCount={unlockedAchievementsCount}
         onOpenWatchlist={() => setIsWatchlistOpen(true)}
-        onOpenDiary={() => setIsDiaryOpen(true)}
-        onOpenAchievements={() => setIsAchievementsOpen(true)}
-        onOpenRoulette={() => setIsRouletteOpen(true)}
         onShareRoom={handleShareRoom}
         hasCopied={hasCopied}
       />
 
+      {/* Intuitive 3-Tab Navigation Bar */}
+      <NavigationTabs
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        matchesCount={recommendations.length}
+        vetoCount={totalVetoesCount}
+        diaryCount={diaryEntries.length}
+        unlockedBadgesCount={unlockedAchievementsCount}
+      />
+
       {/* Toast notification */}
       {toastMessage && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-rose-500/40 text-slate-100 text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-rose-500/40 text-slate-100 text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
           <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-6 space-y-8">
-        {/* Hero Section */}
-        <div className="text-center space-y-2.5 max-w-2xl mx-auto">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs font-bold">
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
-            <span>Умный подбор кино без споров и разногласий</span>
-          </div>
-          <h1 className="font-heading font-black text-2xl sm:text-4xl text-slate-100 tracking-tight">
-            Что посмотреть сегодня?
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
-            Добавьте вкусы каждого человека, нажмите кнопку вето на то, что точно не хотите, и алгоритм рассчитает идеальный компромисс.
-          </p>
-        </div>
-
-        {/* STEP 1: Room Participants & Taste configuration */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-heading font-bold text-sm uppercase tracking-wider text-slate-300 flex items-center gap-2">
-              <span className="w-6 h-6 rounded-lg bg-rose-500 text-white text-xs flex items-center justify-center font-black">
-                1
-              </span>
-              <span>Вкусы и стоп-факторы участников</span>
-            </h2>
-            <span className="text-xs text-slate-500 hidden sm:inline">
-              Кликните на карточку зрителя для настройки
-            </span>
-          </div>
-
-          {/* Participant Tabs */}
-          <RoomParticipantTabs
-            participants={participants}
-            activeParticipantId={activeParticipantId}
-            onSelectParticipant={setActiveParticipantId}
-            onAddParticipant={handleAddParticipant}
-            onRemoveParticipant={handleRemoveParticipant}
-            mode={filters.mode}
-          />
-
-          {/* Active Participant Taste Editor */}
-          {activeParticipant && (
-            <ParticipantTasteEditor
-              participant={activeParticipant}
-              onUpdate={handleUpdateParticipant}
-              onApplyPreset={handleApplyPreset}
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-6">
+        {/* TAB 1: MOVIE FEED & QUICK SEARCH */}
+        {activeTab === 'feed' && (
+          <div className="space-y-6">
+            {/* Quick Mood & Instant Search Bar */}
+            <QuickMoodBar
+              filters={filters}
+              onUpdateFilters={setFilters}
+              onSearch={fetchRecommendations}
+              isLoading={isLoading}
+              onOpenRoulette={() => setIsRouletteOpen(true)}
+              onOpenBlitz={() => setIsBlitzOpen(true)}
             />
-          )}
-        </section>
 
-        {/* STEP 2: Mood prompt & Evening filters */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-heading font-bold text-sm uppercase tracking-wider text-slate-300 flex items-center gap-2">
-              <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs flex items-center justify-center font-black">
-                2
-              </span>
-              <span>Настроение вечера и параметры сеанса</span>
-            </h2>
-          </div>
+            {/* Confirmed Choice of the Night Hero Banner */}
+            {confirmedChoice && (
+              <div className="bg-gradient-to-r from-emerald-950/80 via-teal-950/80 to-slate-900 p-4 sm:p-5 rounded-3xl border border-emerald-500/40 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <img
+                    src={confirmedChoice.posterUrl}
+                    alt={confirmedChoice.title}
+                    className="w-14 sm:w-16 aspect-[2/3] object-cover rounded-xl border border-emerald-500/30"
+                  />
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider flex items-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      <span>Выбор вечера подтвержден!</span>
+                    </span>
+                    <h3 className="font-heading font-black text-lg text-white">
+                      «{confirmedChoice.title}» ({confirmedChoice.year})
+                    </h3>
+                    <p className="text-xs text-slate-300">
+                      Компромисс {confirmedChoice.overallMatchScore}% • Приятного просмотра! 🍿
+                    </p>
+                  </div>
+                </div>
 
-          <MoodAndFilters filters={filters} onUpdateFilters={setFilters} />
-        </section>
-
-        {/* Big Action Call-to-Action Bar */}
-        <section className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-          <button
-            type="button"
-            onClick={fetchRecommendations}
-            disabled={isLoading}
-            className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-rose-500 via-amber-500 to-rose-600 hover:from-rose-600 hover:to-amber-600 text-white font-heading font-black text-sm sm:text-base shadow-xl shadow-rose-500/25 transition-all transform active:scale-95 disabled:opacity-60 flex items-center justify-center gap-2.5 cursor-pointer"
-          >
-            {isLoading ? (
-              <>
-                <RotateCcw className="w-5 h-5 animate-spin" />
-                <span>Анализируем компромисс и стоп-факторы...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-5 h-5 text-amber-200" />
-                <span>Найти идеальный фильм для двоих! ✨</span>
-              </>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => handleAddToDiary(confirmedChoice)}
+                    className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    Записать в дневник
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmedChoice(null)}
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                  >
+                    Сменить
+                  </button>
+                </div>
+              </div>
             )}
-          </button>
 
-          {/* Rapid Blitz & Roulette buttons */}
-          {recommendations.length > 0 && (
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={() => setIsBlitzOpen(true)}
-                className="flex-1 sm:flex-initial px-4 py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-rose-300 font-heading font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
-                title="Быстрый свайп-батл на двоих"
-              >
-                <Flame className="w-4 h-4 text-rose-500" />
-                <span>Блиц-раунд 🔥</span>
-              </button>
+            {/* Movie List Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 flex-wrap gap-2">
+              <div>
+                <h2 className="font-heading font-black text-xl text-slate-100 flex items-center gap-2">
+                  <span>🎯 Лучшие совпадения для вас</span>
+                  <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-amber-300">
+                    {recommendations.length} тайтлов
+                  </span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Отсортировано по шкале компромисса с гарантией отсутствия стоп-факторов
+                </p>
+              </div>
 
-              <button
-                type="button"
-                onClick={() => setIsRouletteOpen(true)}
-                className="flex-1 sm:flex-initial px-4 py-4 rounded-2xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-heading font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
-                title="Случайный выбор из лучших компромиссов"
-              >
-                <Dices className="w-4 h-4 text-amber-400" />
-                <span>Кинорулетка 🎰</span>
-              </button>
-            </div>
-          )}
-        </section>
-
-        {/* STEP 3: Results & Recommendations */}
-        <section className="space-y-6 pt-4">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3 flex-wrap gap-2">
-            <div>
-              <h2 className="font-heading font-black text-xl text-slate-100 flex items-center gap-2">
-                <span>🎯 Идеальные варианты для вас</span>
-                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-slate-800 text-amber-300">
-                  {recommendations.length} тайтлов
-                </span>
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Отсортировано по шкале компромисса с гарантией соблюдения всех стоп-факторов
-              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={fetchRecommendations}
+                  disabled={isLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 font-medium transition-colors cursor-pointer"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                  <span>Обновить</span>
+                </button>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={fetchRecommendations}
-                disabled={isLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 font-medium transition-colors cursor-pointer"
-              >
-                <RotateCcw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-                <span>Пересчитать</span>
-              </button>
-            </div>
+            {/* Movie Cards List */}
+            {recommendations.length > 0 ? (
+              <div className="space-y-5">
+                {recommendations.map((movie) => (
+                  <MovieCard
+                    key={movie.id}
+                    movie={movie}
+                    isBookmarked={watchlist.some((w) => w.id === movie.id)}
+                    isCurrentChoice={confirmedChoice?.id === movie.id}
+                    participants={participants}
+                    activeParticipantId={activeParticipantId}
+                    userRatings={movieRatings[movie.id] || {}}
+                    onSelectAsChoice={handleSelectAsChoice}
+                    onToggleBookmark={handleToggleBookmark}
+                    onApplyInstantVeto={handleApplyInstantVeto}
+                    onRateMovie={handleRateMovie}
+                    onAddToDiary={handleAddToDiary}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="bg-slate-900/50 rounded-3xl p-10 border border-slate-800 text-center space-y-3">
+                <Film className="w-10 h-10 text-slate-600 mx-auto" />
+                <h4 className="font-heading font-bold text-base text-slate-200">
+                  Все предложенные варианты заблокированы вето
+                </h4>
+                <p className="text-xs text-slate-400 max-w-md mx-auto">
+                  Попробуйте ослабить стоп-факторы во вкладке «Вкусы и ВЕТО» или изменить фильтры.
+                </p>
+                <button
+                  onClick={() => {
+                    setBannedTitles([]);
+                    fetchRecommendations();
+                  }}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Сбросить блокировки и пересчитать
+                </button>
+              </div>
+            )}
           </div>
+        )}
 
-          {/* Movie Cards List */}
-          {recommendations.length > 0 ? (
-            <div className="space-y-6">
-              {recommendations.map((movie) => (
-                <MovieCard
-                  key={movie.id}
-                  movie={movie}
-                  isBookmarked={watchlist.some((w) => w.id === movie.id)}
-                  isCurrentChoice={confirmedChoice?.id === movie.id}
-                  participants={participants}
-                  activeParticipantId={activeParticipantId}
-                  userRatings={movieRatings[movie.id] || {}}
-                  onSelectAsChoice={handleSelectAsChoice}
-                  onToggleBookmark={handleToggleBookmark}
-                  onApplyInstantVeto={handleApplyInstantVeto}
-                  onRateMovie={handleRateMovie}
-                  onAddToDiary={handleAddToDiary}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="bg-slate-900/50 rounded-3xl p-8 border border-slate-800 text-center space-y-3">
-              <Film className="w-10 h-10 text-slate-600 mx-auto" />
-              <h4 className="font-heading font-bold text-base text-slate-200">
-                Все варианты скрыты или заблокированы вето
-              </h4>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Попробуйте ослабить стоп-факторы или изменить фильтры хронометража, чтобы получить новые рекомендации.
-              </p>
+        {/* TAB 2: TASTES & VETO CONFIGURATION */}
+        {activeTab === 'tastes' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h2 className="font-heading font-black text-xl text-slate-100 flex items-center gap-2">
+                  <Sliders className="w-5 h-5 text-indigo-400" />
+                  <span>Вкусы и стоп-факторы зрителей</span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Настройте любимые жанры, актёров и табу каждого человека
+                </p>
+              </div>
+
               <button
+                type="button"
                 onClick={() => {
-                  setBannedTitles([]);
+                  setActiveTab('feed');
                   fetchRecommendations();
                 }}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
               >
-                Сбросить блокировки и пересчитать
+                <span>Готово, к фильмам</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
             </div>
-          )}
-        </section>
+
+            {/* Participant Tabs */}
+            <RoomParticipantTabs
+              participants={participants}
+              activeParticipantId={activeParticipantId}
+              onSelectParticipant={setActiveParticipantId}
+              onAddParticipant={handleAddParticipant}
+              onRemoveParticipant={handleRemoveParticipant}
+              mode={filters.mode}
+            />
+
+            {/* Active Participant Taste Editor */}
+            {activeParticipant && (
+              <ParticipantTasteEditor
+                participant={activeParticipant}
+                onUpdate={handleUpdateParticipant}
+                onApplyPreset={handleApplyPreset}
+              />
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: COUPLE DIARY & ACHIEVEMENTS */}
+        {activeTab === 'diary' && (
+          <DiaryAndAchievementsTab
+            diaryEntries={diaryEntries}
+            achievements={achievements}
+            participants={participants}
+            onAddDiaryEntry={handleSaveDiaryEntry}
+            onDeleteDiaryEntry={handleDeleteDiaryEntry}
+            onOpenNewEntryModal={() => setIsDiaryOpen(true)}
+          />
+        )}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-900 mt-16 py-6 text-center text-xs text-slate-500">
-        <p>KinoMatch • Умный кино-компромисс для пар и дружеских компаний • Без ограничений и VPN</p>
+      {/* Clean Footer */}
+      <footer className="border-t border-slate-900 mt-12 py-6 text-center text-xs text-slate-500">
+        <p>KinoMatch • Кинокомпромисс для двоих и компаний • 100% без VPN в РФ</p>
       </footer>
 
-      {/* Blitz Mode Modal */}
+      {/* Modals */}
       <BlitzMatchModal
         isOpen={isBlitzOpen}
         onClose={() => setIsBlitzOpen(false)}
@@ -621,7 +613,6 @@ export default function App() {
         onSelectFinalWinner={handleSelectAsChoice}
       />
 
-      {/* Roulette Modal */}
       <RouletteModal
         isOpen={isRouletteOpen}
         onClose={() => setIsRouletteOpen(false)}
@@ -629,7 +620,6 @@ export default function App() {
         onSelectWinner={handleSelectAsChoice}
       />
 
-      {/* Couple Diary Modal */}
       <CoupleDiaryModal
         isOpen={isDiaryOpen}
         onClose={() => {
@@ -644,14 +634,6 @@ export default function App() {
         onClearPendingMovie={() => setPendingMovieForDiary(null)}
       />
 
-      {/* Achievements Modal */}
-      <AchievementsModal
-        isOpen={isAchievementsOpen}
-        onClose={() => setIsAchievementsOpen(false)}
-        achievements={achievements}
-      />
-
-      {/* Share / Live Room Modal */}
       <ShareRoomModal
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
@@ -659,7 +641,6 @@ export default function App() {
         participants={participants}
       />
 
-      {/* Watchlist Drawer */}
       <WatchlistDrawer
         isOpen={isWatchlistOpen}
         onClose={() => setIsWatchlistOpen(false)}
