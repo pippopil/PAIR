@@ -1,0 +1,6 @@
+{
+  "name": "KinoMatch - Кино на двоих и для компании",
+  "description": "Умный подбор фильмов и сериалов для пар и дружеских компаний с анализом вкусов, кнопкой вето, шкалой компромисса и рекомендациями.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,6 @@
+{
+  "appId": "com.kinomatch.app",
+  "appName": "KinoMatch",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}
