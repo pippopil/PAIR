@@ -175,7 +175,7 @@ app.post('/api/recommendations', async (req: Request, res: Response) => {
 
         const promptText = `
 Ты — умный кино-алгоритм KinoMatch для поиска идеального фильма или сериала на двоих/компанию.
-Твоя задача — найти 6-8 великолепных кинокартин или сериалов, которые станут идеальным компромиссом для зрителей с разными вкусами.
+Твоя задача — найти 4-5 великолепных кинокартин или сериалов, которые станут идеальным компромиссом для зрителей с разными вкусами.
 
 Зрители:
 ${JSON.stringify(participantSummary, null, 2)}
@@ -199,7 +199,7 @@ ${JSON.stringify(participantSummary, null, 2)}
 `;
 
         const geminiCall = ai.models.generateContent({
-          model: 'gemini-3.8-flash',
+          model: 'gemini-2.5-flash',
           contents: promptText,
           config: {
             responseMimeType: 'application/json',
@@ -281,9 +281,9 @@ ${JSON.stringify(participantSummary, null, 2)}
           },
         });
 
-        // 8 seconds timeout
+        // 25 seconds timeout to allow full structured JSON generation
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Gemini timeout')), 8000)
+          setTimeout(() => reject(new Error('Gemini timeout')), 25000)
         );
 
         const geminiResponse: any = await Promise.race([geminiCall, timeoutPromise]);
