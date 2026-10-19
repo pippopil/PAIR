@@ -349,6 +349,64 @@ ${JSON.stringify(participantSummary, null, 2)}
   }
 });
 
+// Creative atmospheric mood prompts collection
+const CREATIVE_MOOD_PROMPTS = [
+  'Неоновый киберпанк с философским подтекстом, дождливым саундтреком и эстетикой 🌧️',
+  'Ироничная французская авантюрная комедия с легким вином, эстетикой и джазом 🍷',
+  'Камерный герметичный детектив в загородном особняке во время грозы, где каждый что-то скрывает 🏰',
+  'Уютный ностальгический ромком из 2000-х с неподдельным юмором и доброй романтикой 📼',
+  'Космическая одиссея с научной достоверностью, от масштаба которой захватывает дух 🪐',
+  'Шпионский коктейль в стиле бондианы с красивыми европейскими локациями и острым сарказмом 🍸',
+  'Фильм-головоломка с ненадежным рассказчиком, переворачивающим весь сюжет в финале 🧩',
+  'Атмосферный скандинавский триллер с заснеженными пейзажами и тонкой психологической дуэлью ❄️',
+  'Теплая жизнеутверждающая история про кулинарию, путешествие и второй шанс в жизни 🥐',
+  'Стильный нео-нуар с саксофоном, ночными огнями мегаполиса и роковой интригой 🎷',
+  'Авантюрная комедия про обаятельных грабителей и дерзкое ограбление музея с юмором 💎',
+  'Вдохновляющая драма про аутсайдера, который вопреки всему добивается триумфа 🏆',
+  'Солнечная итальянская комедия с живописными пейзажами Тосканы и семейными страстями 🍝',
+  'Завораживающая сказочная анимация с глубоким смыслом и чарующим визуальным стилем 🎨',
+  'Ретро-детектив в духе 70-х с винилом, пленочной фактурой и расследованием заговора 🎙️',
+];
+
+// Endpoint for generating creative mood prompts with AI
+app.post('/api/generate-mood', async (req: Request, res: Response) => {
+  const currentMood = (req.body?.currentMood as string) || '';
+  const isValidKey = apiKey && apiKey !== 'MY_GEMINI_API_KEY' && !apiKey.startsWith('MY_');
+
+  if (isValidKey) {
+    try {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 4000)
+      );
+
+      const geminiCall = ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: `Придумай 1 короткую, необычную, интригующую и кинематографичную фразу-настроение для вечернего поиска фильма для пары или друзей (до 15 слов, на русском языке, можно 1-2 уместных эмодзи в конце).
+Примеры хорошего стиля:
+- "Камерный детектив в замке во время грозы, где у каждого скелет в шкафу 🏰"
+- "Стильный нео-нуар под саксофон с ночным дождем и роковой тайной 🎷"
+- "Уютная жизнеутверждающая комедия про кулинарное путешествие и второй шанс 🥐"
+
+Верни только саму фразу без кавычек и вводных слов.`,
+      });
+
+      const geminiRes: any = await Promise.race([geminiCall, timeoutPromise]);
+      const text = geminiRes.text?.trim()?.replace(/^["'«»]|["'«»]$/g, '');
+      if (text && text.length > 8) {
+        return res.json({ prompt: text, source: 'ai' });
+      }
+    } catch {
+      // Gracefully fall back to rich creative collection
+    }
+  }
+
+  // Pick a fresh random prompt from creative pool, different from current
+  const filtered = CREATIVE_MOOD_PROMPTS.filter((p) => p !== currentMood);
+  const picked = filtered[Math.floor(Math.random() * filtered.length)] || CREATIVE_MOOD_PROMPTS[0];
+
+  res.json({ prompt: picked, source: 'curated' });
+});
+
 // TMDB Genre ID to Russian Name mapping
 const TMDB_GENRES_MAP: Record<number, string> = {
   28: 'Боевик',

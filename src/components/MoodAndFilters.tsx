@@ -32,6 +32,31 @@ export const MoodAndFilters: React.FC<MoodAndFiltersProps> = ({
   onUpdateFilters,
 }) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isGeneratingMood, setIsGeneratingMood] = useState(false);
+  const [justGenerated, setJustGenerated] = useState(false);
+
+  const handleGenerateMood = async () => {
+    setIsGeneratingMood(true);
+    try {
+      const response = await fetch('/api/generate-mood', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentMood: filters.moodPrompt }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.prompt) {
+          onUpdateFilters({ ...filters, moodPrompt: data.prompt });
+          setJustGenerated(true);
+          setTimeout(() => setJustGenerated(false), 2000);
+        }
+      }
+    } catch (e) {
+      console.warn('Mood generation error:', e);
+    } finally {
+      setIsGeneratingMood(false);
+    }
+  };
 
   const togglePlatform = (platformId: string) => {
     const current = filters.selectedPlatforms || [];
@@ -45,14 +70,29 @@ export const MoodAndFilters: React.FC<MoodAndFiltersProps> = ({
     <div className="bg-slate-900/60 rounded-3xl p-4 sm:p-5 border border-slate-800/80 space-y-4">
       {/* SECTION 1: Natural Language / Mood Query */}
       <div>
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
           <label className="text-xs font-extrabold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
             <MessageSquareQuote className="w-4 h-4 text-amber-400" />
             <span>Пожелание на сегодняшний вечер</span>
           </label>
-          <span className="text-[10px] text-slate-400 font-medium hidden sm:inline">
-            Умный парсер естественного языка
-          </span>
+
+          {/* AI Suggest Mood Button */}
+          <button
+            type="button"
+            onClick={handleGenerateMood}
+            disabled={isGeneratingMood}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer ${
+              justGenerated
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-emerald-500/10'
+                : 'bg-gradient-to-r from-amber-500/20 via-rose-500/20 to-purple-500/20 hover:from-amber-500/30 hover:via-rose-500/30 hover:to-purple-500/30 border border-amber-500/40 text-amber-200 shadow-amber-500/10'
+            }`}
+            title="Сгенерировать атмосферный запрос с помощью ИИ"
+          >
+            <Sparkles
+              className={`w-3.5 h-3.5 text-amber-400 ${isGeneratingMood ? 'animate-spin' : ''}`}
+            />
+            <span>{isGeneratingMood ? 'Придумываем...' : 'Предложить настроение ✨'}</span>
+          </button>
         </div>
 
         <div className="relative">
