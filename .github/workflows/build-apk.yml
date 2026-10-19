@@ -36,11 +36,11 @@ jobs:
       - name: Sync Capacitor Android assets
         run: npx cap sync android
 
-      - name: Set up Java 17
+      - name: Set up Java 21 (LTS)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
           cache: 'gradle'
 
       - name: Make Gradlew executable
