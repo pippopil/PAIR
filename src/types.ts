@@ -16,6 +16,18 @@ export interface MovieItem {
   tags: string[];
   availablePlatforms: PlatformAvailability[];
   ageRating?: string;
+  triggers?: TriggerReport;
+}
+
+export interface TriggerReport {
+  petsSafe: boolean;
+  petsNote: string;
+  jumpScaresLevel: 'none' | 'low' | 'moderate';
+  jumpScaresNote: string;
+  emotionalTone: string;
+  violenceLevel: 'none' | 'mild' | 'moderate' | 'high';
+  violenceNote: string;
+  hasHappyEnding: boolean;
 }
 
 export interface PlatformAvailability {
@@ -56,6 +68,7 @@ export interface MovieRecommendation extends MovieItem {
     guaranteeNote: string;
   };
   highlightQuote?: string;
+  userRatings?: Record<string, number>; // participantId -> 1..5 stars
 }
 
 export interface SessionFilterOptions {
@@ -73,4 +86,28 @@ export interface BlitzCardVote {
   movieId: string;
   participantId: string;
   vote: 'yes' | 'no' | 'super';
+}
+
+export interface DiaryEntry {
+  id: string;
+  movieId: string;
+  title: string;
+  originalTitle?: string;
+  posterUrl: string;
+  year: number;
+  genres: string[];
+  date: string;
+  ratings: Record<string, { rating: number; name: string; avatar: string }>;
+  averageRating: number;
+  coupleNotes?: string;
+}
+
+export interface AchievementBadge {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  unlocked: boolean;
+  unlockedAt?: string;
+  category: 'duo' | 'blitz' | 'compromise' | 'diary' | 'veto';
 }

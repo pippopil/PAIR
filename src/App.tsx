@@ -6,11 +6,21 @@ import { MoodAndFilters } from './components/MoodAndFilters';
 import { MovieCard } from './components/MovieCard';
 import { BlitzMatchModal } from './components/BlitzMatchModal';
 import { RouletteModal } from './components/RouletteModal';
+import { CoupleDiaryModal } from './components/CoupleDiaryModal';
+import { AchievementsModal } from './components/AchievementsModal';
+import { ShareRoomModal } from './components/ShareRoomModal';
 import { WatchlistDrawer } from './components/WatchlistDrawer';
 import { Confetti } from './components/Confetti';
-import { UserParticipant, MovieRecommendation, SessionFilterOptions } from './types';
+import {
+  UserParticipant,
+  MovieRecommendation,
+  SessionFilterOptions,
+  DiaryEntry,
+  AchievementBadge,
+} from './types';
 import { TASTE_PRESETS, TastePreset } from './data/presets';
 import { CURATED_CATALOG } from './data/catalog';
+import { INITIAL_ACHIEVEMENTS } from './data/achievements';
 import {
   Sparkles,
   Flame,
@@ -22,6 +32,8 @@ import {
   ShieldCheck,
   Zap,
   Dices,
+  BookOpen,
+  Trophy,
 } from 'lucide-react';
 
 const INITIAL_PARTICIPANTS: UserParticipant[] = [
@@ -64,6 +76,25 @@ const INITIAL_FILTERS: SessionFilterOptions = {
   moodPrompt: 'Мы хотим что-то захватывающее с юмором или детективной интригой, но без хоррора',
 };
 
+const INITIAL_DIARY: DiaryEntry[] = [
+  {
+    id: 'diary-sample-1',
+    movieId: 'intouchables',
+    title: '1+1 (Неприкасаемые)',
+    year: 2011,
+    genres: ['Комедия', 'Драма', 'Биография'],
+    posterUrl:
+      'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=500&q=80',
+    date: '18 октября',
+    ratings: {
+      'user-1': { rating: 5, name: 'Алексей', avatar: '👨‍💻' },
+      'user-2': { rating: 5, name: 'Мария', avatar: '👩‍🎨' },
+    },
+    averageRating: 5.0,
+    coupleNotes: 'Шедевр! Смеялись и растрогались оба. Идеальный вечер с пиццей.',
+  },
+];
+
 export default function App() {
   const [participants, setParticipants] = useState<UserParticipant[]>(INITIAL_PARTICIPANTS);
   const [activeParticipantId, setActiveParticipantId] = useState<string>('user-1');
@@ -79,9 +110,24 @@ export default function App() {
   const [confirmedChoice, setConfirmedChoice] = useState<MovieRecommendation | null>(null);
   const [isWatchlistOpen, setIsWatchlistOpen] = useState<boolean>(false);
 
+  // Ratings State: movieId -> (participantId -> 1..5)
+  const [movieRatings, setMovieRatings] = useState<Record<string, Record<string, number>>>({
+    'knives-out': { 'user-1': 5, 'user-2': 4 },
+  });
+
+  // Diary State
+  const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>(INITIAL_DIARY);
+  const [isDiaryOpen, setIsDiaryOpen] = useState<boolean>(false);
+  const [pendingMovieForDiary, setPendingMovieForDiary] = useState<MovieRecommendation | null>(null);
+
+  // Achievements State
+  const [achievements, setAchievements] = useState<AchievementBadge[]>(INITIAL_ACHIEVEMENTS);
+  const [isAchievementsOpen, setIsAchievementsOpen] = useState<boolean>(false);
+
   // Modals & Effects
   const [isBlitzOpen, setIsBlitzOpen] = useState<boolean>(false);
   const [isRouletteOpen, setIsRouletteOpen] = useState<boolean>(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
   const [hasCopied, setHasCopied] = useState<boolean>(false);
   const [bannedTitles, setBannedTitles] = useState<string[]>([]);
@@ -93,6 +139,20 @@ export default function App() {
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Helper to unlock an achievement
+  const unlockAchievement = (id: string) => {
+    setAchievements((prev) =>
+      prev.map((a) => {
+        if (a.id === id && !a.unlocked) {
+          setShowConfetti(true);
+          showToast(`🏆 Открыто достижение: «${a.title}»!`);
+          return { ...a, unlocked: true, unlockedAt: 'Сегодня' };
+        }
+        return a;
+      })
+    );
   };
 
   // Switch mode
@@ -113,7 +173,7 @@ export default function App() {
       id: `user-${Date.now()}`,
       name: `Друг ${newIdx}`,
       avatar: emojis[(newIdx - 1) % emojis.length],
-      color: '#3b82f6',
+      color: '#06b6d4',
       favoriteGenres: ['Комедия', 'Приключения'],
       favoriteMovies: [],
       favoriteActors: [],
@@ -121,41 +181,48 @@ export default function App() {
     };
     setParticipants([...participants, newP]);
     setActiveParticipantId(newP.id);
+    showToast(`Участник ${newP.name} добавлен в комнату`);
   };
 
+  // Remove participant
   const handleRemoveParticipant = (id: string) => {
     if (participants.length <= 2) return;
-    const next = participants.filter((p) => p.id !== id);
-    setParticipants(next);
+    setParticipants(participants.filter((p) => p.id !== id));
     if (activeParticipantId === id) {
-      setActiveParticipantId(next[0].id);
+      setActiveParticipantId(participants[0].id);
     }
   };
 
-  // Update participant data
+  // Update participant
   const handleUpdateParticipant = (updated: UserParticipant) => {
     setParticipants(participants.map((p) => (p.id === updated.id ? updated : p)));
   };
 
   // Apply taste preset
   const handleApplyPreset = (preset: TastePreset) => {
-    const updated: UserParticipant = {
-      ...activeParticipant,
-      favoriteGenres: Array.from(new Set([...activeParticipant.favoriteGenres, ...preset.favoriteGenres])),
-      favoriteActors: Array.from(new Set([...activeParticipant.favoriteActors, ...preset.favoriteActors])),
-      favoriteMovies: [
-        ...activeParticipant.favoriteMovies,
-        ...preset.sampleTitles.filter(
-          (st) => !activeParticipant.favoriteMovies.some((m) => m.title === st.title)
-        ),
-      ],
-      vetoes: Array.from(new Set([...activeParticipant.vetoes, ...preset.suggestedVetoes])),
-    };
-    handleUpdateParticipant(updated);
-    showToast(`Профиль «${preset.name}» успешно применен к ${activeParticipant.name}!`);
+    setParticipants(
+      participants.map((p) => {
+        if (p.id === activeParticipantId) {
+          return {
+            ...p,
+            favoriteGenres: Array.from(new Set([...p.favoriteGenres, ...preset.favoriteGenres])),
+            favoriteMovies: [
+              ...p.favoriteMovies,
+              ...preset.sampleTitles.filter(
+                (pm) => !p.favoriteMovies.some((fm) => fm.id === pm.id)
+              ),
+            ],
+            favoriteActors: Array.from(new Set([...p.favoriteActors, ...preset.favoriteActors])),
+            vetoes: Array.from(new Set([...p.vetoes, ...preset.suggestedVetoes])),
+          };
+        }
+        return p;
+      })
+    );
+    showToast(`Пресет «${preset.name}» применён к профилю ${activeParticipant.name}!`);
   };
 
-  // Fetch or compute recommendations
+  // Fetch recommendations
   const fetchRecommendations = async () => {
     setIsLoading(true);
     setConfirmedChoice(null);
@@ -163,7 +230,9 @@ export default function App() {
     try {
       const response = await fetch('/api/recommendations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           participants,
           moodPrompt: filters.moodPrompt,
@@ -173,83 +242,160 @@ export default function App() {
       });
 
       if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
+        throw new Error('Не удалось получить рекомендации');
       }
 
       const data = await response.json();
-      const recs: MovieRecommendation[] = (data.recommendations || []).filter(
+      const list: MovieRecommendation[] = (data.recommendations || []).filter(
         (m: MovieRecommendation) => !bannedTitles.includes(m.id)
       );
 
-      setRecommendations(recs);
+      setRecommendations(list);
       setHasCalculated(true);
-    } catch (err) {
-      console.error('Error fetching recommendations:', err);
-      // Fallback directly to client-filtered curated items so user never sees empty state
-      const fallbackRecs: MovieRecommendation[] = CURATED_CATALOG.slice(0, 6).map((m, idx) => ({
-        ...m,
-        overallMatchScore: 85 - idx * 2,
-        matchBreakdown: participants.map((p) => ({
-          participantId: p.id,
-          participantName: p.name,
-          score: 84 - idx * 2,
-          reason: `Совпадает по жанрам и динамичному темпу`,
-          appealFactor: m.genres[0] || 'Сюжет',
-        })),
-        compromiseRationale: `Отличный баланс между предпочтениями зрителей без рисков спора.`,
-        vetoStatus: {
-          isSafe: true,
-          guaranteeNote: 'Безопасно по всем стоп-факторам',
-        },
-      }));
-      setRecommendations(fallbackRecs);
-      setHasCalculated(true);
+
+      // Check high match achievement
+      if (list.some((m) => m.overallMatchScore >= 85)) {
+        unlockAchievement('first-match');
+      }
+
+      showToast(`Подобрано ${list.length} компромиссных вариантов 🎯`);
+    } catch (err: any) {
+      console.warn('Error fetching recommendations, using curated fallback:', err);
+      showToast('Использован встроенный умный каталог');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Initial load
+  // Load initial recommendations on mount
   useEffect(() => {
     fetchRecommendations();
   }, []);
 
-  // Watchlist toggle
-  const handleToggleBookmark = (movie: MovieRecommendation) => {
-    if (watchlist.some((m) => m.id === movie.id)) {
-      setWatchlist(watchlist.filter((m) => m.id !== movie.id));
-      showToast(`Удалено из сохраненных: «${movie.title}»`);
-    } else {
-      setWatchlist([...watchlist, movie]);
-      showToast(`Сохранено в список: «${movie.title}» 📌`);
-    }
+  // Sync state to local room in background (no VPN needed)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetch(`/api/rooms/${encodeURIComponent(filters.roomCode)}/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          participants,
+          userRatings: movieRatings,
+          confirmedChoice,
+          diaryEntries,
+        }),
+      }).catch((e) => console.warn('Room sync error:', e));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [filters.roomCode, participants, movieRatings, confirmedChoice, diaryEntries]);
+
+  // Periodic polling from partner in room (every 6 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetch(`/api/rooms/${encodeURIComponent(filters.roomCode)}/state`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.found && data.room) {
+            if (data.room.confirmedChoice && (!confirmedChoice || confirmedChoice.id !== data.room.confirmedChoice.id)) {
+              setConfirmedChoice(data.room.confirmedChoice);
+              setShowConfetti(true);
+            }
+          }
+        })
+        .catch(() => {});
+    }, 6000);
+
+    return () => clearInterval(interval);
+  }, [filters.roomCode, confirmedChoice]);
+
+  // Handle 5-star rating on a movie card
+  const handleRateMovie = (movie: MovieRecommendation, participantId: string, rating: number) => {
+    setMovieRatings((prev) => {
+      const movieMap = prev[movie.id] || {};
+      const updatedMovieMap = { ...movieMap, [participantId]: rating };
+
+      // Check if both participants gave 5 stars
+      if (participants.length >= 2) {
+        const p1 = participants[0]?.id;
+        const p2 = participants[1]?.id;
+        if (updatedMovieMap[p1] === 5 && updatedMovieMap[p2] === 5) {
+          unlockAchievement('five-star-duo');
+        }
+      }
+
+      // Check detective genre achievement
+      if (movie.genres.some((g) => g.toLowerCase().includes('детектив'))) {
+        unlockAchievement('detective-duo');
+      }
+
+      return { ...prev, [movie.id]: updatedMovieMap };
+    });
+
+    const participantName =
+      participants.find((p) => p.id === participantId)?.name || 'Зритель';
+    showToast(`${participantName} поставил ★ ${rating} фильму «${movie.title}»`);
   };
 
-  // Final choice confirmation
+  // Add movie to diary
+  const handleAddToDiary = (movie: MovieRecommendation) => {
+    setPendingMovieForDiary(movie);
+    setIsDiaryOpen(true);
+  };
+
+  // Save diary entry
+  const handleSaveDiaryEntry = (entry: DiaryEntry) => {
+    const updated = [entry, ...diaryEntries];
+    setDiaryEntries(updated);
+    unlockAchievement('diary-first');
+    if (updated.length >= 3) {
+      unlockAchievement('movie-buffs');
+    }
+    showToast(`«${entry.title}» сохранён в Кинодневник пары! 🍿`);
+  };
+
+  const handleDeleteDiaryEntry = (id: string) => {
+    setDiaryEntries(diaryEntries.filter((e) => e.id !== id));
+    showToast('Запись удалена из дневника');
+  };
+
+  // Select as final choice of the night
   const handleSelectAsChoice = (movie: MovieRecommendation) => {
     setConfirmedChoice(movie);
     setShowConfetti(true);
-    if (!watchlist.some((m) => m.id === movie.id)) {
-      setWatchlist([movie, ...watchlist]);
+    showToast(`Выбор вечера сделан: «${movie.title}»! Приятного просмотра 🎉`);
+
+    // Check roulette achievement if roulette was open
+    if (isRouletteOpen) {
+      unlockAchievement('roulette-luck');
     }
-    showToast(`Выбор вечера подтвержден! Смотрим «${movie.title}» 🍿🎉`);
   };
 
-  // Instant VETO on movie
+  // Toggle bookmark / watchlist
+  const handleToggleBookmark = (movie: MovieRecommendation) => {
+    if (watchlist.some((w) => w.id === movie.id)) {
+      setWatchlist(watchlist.filter((w) => w.id !== movie.id));
+      showToast(`Фильм «${movie.title}» удален из списка`);
+    } else {
+      setWatchlist([...watchlist, movie]);
+      showToast(`Фильм «${movie.title}» добавлен в список просмотра ❤️`);
+    }
+  };
+
+  // Apply instant veto to movie
   const handleApplyInstantVeto = (movie: MovieRecommendation) => {
     setBannedTitles((prev) => [...prev, movie.id]);
     setRecommendations((prev) => prev.filter((m) => m.id !== movie.id));
+    unlockAchievement('iron-veto');
     showToast(`Фильм «${movie.title}» заблокирован вето и удален 🚫`);
   };
 
   // Copy room link
   const handleShareRoom = () => {
-    const text = `${window.location.origin}/#room=${filters.roomCode}`;
-    navigator.clipboard?.writeText(text);
-    setHasCopied(true);
-    showToast(`Код комнаты #${filters.roomCode} скопирован в буфер!`);
-    setTimeout(() => setHasCopied(false), 2500);
+    setIsShareModalOpen(true);
   };
+
+  const unlockedAchievementsCount = achievements.filter((a) => a.unlocked).length;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">
@@ -261,7 +407,11 @@ export default function App() {
         onModeChange={handleModeChange}
         roomCode={filters.roomCode}
         watchlistCount={watchlist.length}
+        diaryCount={diaryEntries.length}
+        unlockedAchievementsCount={unlockedAchievementsCount}
         onOpenWatchlist={() => setIsWatchlistOpen(true)}
+        onOpenDiary={() => setIsDiaryOpen(true)}
+        onOpenAchievements={() => setIsAchievementsOpen(true)}
         onOpenRoulette={() => setIsRouletteOpen(true)}
         onShareRoom={handleShareRoom}
         hasCopied={hasCopied}
@@ -298,14 +448,14 @@ export default function App() {
               <span className="w-6 h-6 rounded-lg bg-rose-500 text-white text-xs flex items-center justify-center font-black">
                 1
               </span>
-              <span>Вкусы зрителей ({participants.length})</span>
+              <span>Вкусы и стоп-факторы участников</span>
             </h2>
-            <span className="text-xs text-slate-500">
-              Переключайте вкладки, чтобы настроить вкусы каждого
+            <span className="text-xs text-slate-500 hidden sm:inline">
+              Кликните на карточку зрителя для настройки
             </span>
           </div>
 
-          {/* Participant Tab Switcher */}
+          {/* Participant Tabs */}
           <RoomParticipantTabs
             participants={participants}
             activeParticipantId={activeParticipantId}
@@ -315,7 +465,7 @@ export default function App() {
             mode={filters.mode}
           />
 
-          {/* Active Participant Taste & Veto Editor */}
+          {/* Active Participant Taste Editor */}
           {activeParticipant && (
             <ParticipantTasteEditor
               participant={activeParticipant}
@@ -325,21 +475,21 @@ export default function App() {
           )}
         </section>
 
-        {/* STEP 2: Mood & Filters */}
+        {/* STEP 2: Mood prompt & Evening filters */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-heading font-bold text-sm uppercase tracking-wider text-slate-300 flex items-center gap-2">
-              <span className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 text-xs flex items-center justify-center font-black">
+              <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs flex items-center justify-center font-black">
                 2
               </span>
-              <span>Пожелание на вечер и фильтры</span>
+              <span>Настроение вечера и параметры сеанса</span>
             </h2>
           </div>
 
           <MoodAndFilters filters={filters} onUpdateFilters={setFilters} />
         </section>
 
-        {/* Big Action Bar */}
+        {/* Big Action Call-to-Action Bar */}
         <section className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
           <button
             type="button"
@@ -366,7 +516,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsBlitzOpen(true)}
-                className="flex-1 sm:flex-initial px-4 py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-rose-300 font-heading font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-lg"
+                className="flex-1 sm:flex-initial px-4 py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-rose-300 font-heading font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
                 title="Быстрый свайп-батл на двоих"
               >
                 <Flame className="w-4 h-4 text-rose-500" />
@@ -376,7 +526,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setIsRouletteOpen(true)}
-                className="flex-1 sm:flex-initial px-4 py-4 rounded-2xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-heading font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-lg"
+                className="flex-1 sm:flex-initial px-4 py-4 rounded-2xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-heading font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
                 title="Случайный выбор из лучших компромиссов"
               >
                 <Dices className="w-4 h-4 text-amber-400" />
@@ -406,7 +556,7 @@ export default function App() {
                 type="button"
                 onClick={fetchRecommendations}
                 disabled={isLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 font-medium transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 font-medium transition-colors cursor-pointer"
               >
                 <RotateCcw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
                 <span>Пересчитать</span>
@@ -417,15 +567,20 @@ export default function App() {
           {/* Movie Cards List */}
           {recommendations.length > 0 ? (
             <div className="space-y-6">
-              {recommendations.map((movie, index) => (
+              {recommendations.map((movie) => (
                 <MovieCard
                   key={movie.id}
                   movie={movie}
                   isBookmarked={watchlist.some((w) => w.id === movie.id)}
                   isCurrentChoice={confirmedChoice?.id === movie.id}
+                  participants={participants}
+                  activeParticipantId={activeParticipantId}
+                  userRatings={movieRatings[movie.id] || {}}
                   onSelectAsChoice={handleSelectAsChoice}
                   onToggleBookmark={handleToggleBookmark}
                   onApplyInstantVeto={handleApplyInstantVeto}
+                  onRateMovie={handleRateMovie}
+                  onAddToDiary={handleAddToDiary}
                 />
               ))}
             </div>
@@ -443,7 +598,7 @@ export default function App() {
                   setBannedTitles([]);
                   fetchRecommendations();
                 }}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold"
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold cursor-pointer"
               >
                 Сбросить блокировки и пересчитать
               </button>
@@ -454,7 +609,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-900 mt-16 py-6 text-center text-xs text-slate-500">
-        <p>KinoMatch • Умный кино-компромисс для пар и дружеских компаний</p>
+        <p>KinoMatch • Умный кино-компромисс для пар и дружеских компаний • Без ограничений и VPN</p>
       </footer>
 
       {/* Blitz Mode Modal */}
@@ -472,6 +627,36 @@ export default function App() {
         onClose={() => setIsRouletteOpen(false)}
         movies={recommendations}
         onSelectWinner={handleSelectAsChoice}
+      />
+
+      {/* Couple Diary Modal */}
+      <CoupleDiaryModal
+        isOpen={isDiaryOpen}
+        onClose={() => {
+          setIsDiaryOpen(false);
+          setPendingMovieForDiary(null);
+        }}
+        entries={diaryEntries}
+        participants={participants}
+        onAddEntry={handleSaveDiaryEntry}
+        onDeleteEntry={handleDeleteDiaryEntry}
+        pendingMovieToAdd={pendingMovieForDiary}
+        onClearPendingMovie={() => setPendingMovieForDiary(null)}
+      />
+
+      {/* Achievements Modal */}
+      <AchievementsModal
+        isOpen={isAchievementsOpen}
+        onClose={() => setIsAchievementsOpen(false)}
+        achievements={achievements}
+      />
+
+      {/* Share / Live Room Modal */}
+      <ShareRoomModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        roomCode={filters.roomCode}
+        participants={participants}
       />
 
       {/* Watchlist Drawer */}

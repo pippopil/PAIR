@@ -559,6 +559,53 @@ app.get('/api/search', (req: Request, res: Response) => {
   res.json({ results });
 });
 
+// In-memory real-time rooms state (works 100% locally in Russia without VPN)
+interface RoomSession {
+  roomCode: string;
+  updatedAt: number;
+  participants: any[];
+  userRatings: Record<string, Record<string, number>>; // movieId -> (participantId -> rating)
+  confirmedChoice: any;
+  diaryEntries: any[];
+}
+
+const ROOMS_STORE: Map<string, RoomSession> = new Map();
+
+app.get('/api/rooms/:roomCode/state', (req: Request, res: Response) => {
+  const roomCode = req.params.roomCode;
+  const room = ROOMS_STORE.get(roomCode);
+  if (!room) {
+    return res.json({ found: false, roomCode });
+  }
+  res.json({ found: true, room });
+});
+
+app.post('/api/rooms/:roomCode/sync', (req: Request, res: Response) => {
+  const roomCode = req.params.roomCode;
+  const { participants, userRatings, confirmedChoice, diaryEntries } = req.body;
+
+  let room = ROOMS_STORE.get(roomCode);
+  if (!room) {
+    room = {
+      roomCode,
+      updatedAt: Date.now(),
+      participants: participants || [],
+      userRatings: userRatings || {},
+      confirmedChoice: confirmedChoice || null,
+      diaryEntries: diaryEntries || [],
+    };
+  } else {
+    room.updatedAt = Date.now();
+    if (participants) room.participants = participants;
+    if (userRatings) room.userRatings = { ...room.userRatings, ...userRatings };
+    if (confirmedChoice !== undefined) room.confirmedChoice = confirmedChoice;
+    if (diaryEntries) room.diaryEntries = diaryEntries;
+  }
+
+  ROOMS_STORE.set(roomCode, room);
+  res.json({ success: true, updatedAt: room.updatedAt, room });
+});
+
 // Platform and metadata info
 app.get('/api/meta', (_req: Request, res: Response) => {
   res.json({
