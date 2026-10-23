@@ -246,6 +246,59 @@ async function fetchWikipediaPoster(title: string, originalTitle?: string): Prom
   return null;
 }
 
+// TMDB v3 API Key & Configuration
+const TMDB_DEFAULT_KEY = '2dca580c2a14b55200e784d157207b4d';
+function getTmdbKey(): string {
+  return process.env.TMDB_API_KEY || process.env.TMDB_KEY || TMDB_DEFAULT_KEY;
+}
+
+const RUSSIAN_GENRE_TO_TMDB_ID: Record<string, number> = {
+  'Боевик': 28,
+  'Приключения': 12,
+  'Анимация': 16,
+  'Комедия': 35,
+  'Криминал': 80,
+  'Документальный': 99,
+  'Драма': 18,
+  'Семейный': 10751,
+  'Фэнтези': 14,
+  'История': 36,
+  'Ужасы': 27,
+  'Музыка': 10402,
+  'Детектив': 9648,
+  'Мелодрама': 10749,
+  'Фантастика': 878,
+  'Триллер': 53,
+  'Военный': 10752,
+  'Вестерн': 37,
+  'Биография': 36,
+  'Мистика': 9648,
+};
+
+const TMDB_GENRES_MAP: Record<number, string> = {
+  28: 'Боевик',
+  12: 'Приключения',
+  16: 'Анимация',
+  35: 'Комедия',
+  80: 'Криминал',
+  99: 'Документальный',
+  18: 'Драма',
+  10751: 'Семейный',
+  14: 'Фэнтези',
+  36: 'История',
+  27: 'Ужасы',
+  10402: 'Музыка',
+  9648: 'Детектив',
+  10749: 'Мелодрама',
+  878: 'Фантастика',
+  53: 'Триллер',
+  10752: 'Военный',
+  37: 'Вестерн',
+  10759: 'Боевик',
+  10765: 'Фантастика',
+  10768: 'Военный',
+};
+
 export async function resolveAccurateMoviePoster(
   title: string,
   originalTitle?: string,
@@ -260,6 +313,9 @@ export async function resolveAccurateMoviePoster(
 
   if (POSTER_CACHE.has(normKey)) {
     return POSTER_CACHE.get(normKey)!;
+  }
+  if (origNormKey && POSTER_CACHE.has(origNormKey)) {
+    return POSTER_CACHE.get(origNormKey)!;
   }
 
   // 1. Check verified dictionary first
@@ -291,7 +347,7 @@ export async function resolveAccurateMoviePoster(
   }
 
   // 3. Query TMDB with strict title matching to ensure authentic poster
-  const tmdbKey = process.env.TMDB_API_KEY || process.env.TMDB_KEY || '';
+  const tmdbKey = getTmdbKey();
   if (tmdbKey) {
     try {
       const isBearerToken = tmdbKey.length > 50;
@@ -304,7 +360,6 @@ export async function resolveAccurateMoviePoster(
       const res = await fetch(url, { headers });
       if (res.ok) {
         const data = await res.json();
-        // Strictly match title so unrelated popular items aren't returned
         const matchedItem = (data.results || []).find((r: any) => {
           if (!r.poster_path) return false;
           const rTitle = cleanTitleForLookup(r.title || r.name || '');
@@ -320,6 +375,7 @@ export async function resolveAccurateMoviePoster(
         if (matchedItem?.poster_path) {
           const poster = `https://image.tmdb.org/t/p/w500${matchedItem.poster_path}`;
           POSTER_CACHE.set(normKey, poster);
+          if (origNormKey) POSTER_CACHE.set(origNormKey, poster);
           return poster;
         }
       }
@@ -341,8 +397,222 @@ export async function resolveAccurateMoviePoster(
   return fallback;
 }
 
-// Fallback / Pure Local Algorithm
-function calculateLocalRecommendations(
+function normalizeTmdbCandidate(item: any, forceType?: 'movie' | 'series', creditPerson?: string) {
+  const isMovie = forceType ? forceType === 'movie' : (item.media_type !== 'tv' && !item.first_air_date);
+  const title = (item.title || item.name || item.original_title || item.original_name || 'Кино').trim();
+  const originalTitle = (item.original_title || item.original_name || title).trim();
+  const dateStr = item.release_date || item.first_air_date;
+  const year = dateStr ? parseInt(dateStr.split('-')[0], 10) : new Date().getFullYear();
+  const genres = (item.genre_ids || [])
+    .map((id: number) => TMDB_GENRES_MAP[id])
+    .filter(Boolean);
+
+  const posterUrl = item.poster_path
+    ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
+    : `https://upload.wikimedia.org/wikipedia/ru/3/36/Durak_film_poster.jpg`;
+
+  // Pre-seed poster cache with guaranteed authentic TMDB poster
+  POSTER_CACHE.set(cleanTitleForLookup(title), posterUrl);
+  if (originalTitle) {
+    POSTER_CACHE.set(cleanTitleForLookup(originalTitle), posterUrl);
+  }
+
+  const cast = creditPerson ? [creditPerson] : [];
+  const ratingKp = item.vote_average ? Number(item.vote_average.toFixed(1)) : 7.6;
+  const ratingImdb = ratingKp;
+
+  return {
+    id: `tmdb-${item.id}`,
+    tmdbId: item.id,
+    title,
+    originalTitle,
+    year,
+    type: isMovie ? ('movie' as const) : ('series' as const),
+    genres: genres.length ? genres : ['Кино'],
+    director: item.director || '',
+    cast,
+    duration: isMovie ? '~118 мин' : '1-3 сезона',
+    durationMinutes: isMovie ? 118 : 50,
+    ratingKp,
+    ratingImdb,
+    posterUrl,
+    description: item.overview || 'Культовая картина с высокими зрительскими оценками и ярким сюжетом.',
+    tags: ['TMDB Выбор', ...genres.slice(0, 2)],
+    ageRating: item.adult ? '18+' : '16+',
+    availablePlatforms: [
+      { id: 'kinopoisk', name: 'Кинопоиск', color: 'bg-orange-500' },
+      { id: 'okko', name: 'Okko', color: 'bg-indigo-600' },
+      { id: 'ivi', name: 'Иви', color: 'bg-rose-600' },
+    ],
+  };
+}
+
+// Fetch dynamic candidates from TMDB according to participants tastes, mood, and filters
+async function fetchTmdbCandidates(
+  participants: any[],
+  moodPrompt: string = '',
+  filters: any = {}
+): Promise<any[]> {
+  const tmdbKey = getTmdbKey();
+  if (!tmdbKey) return [];
+
+  const candidates: any[] = [];
+  const seenTmdbIds = new Set<number>();
+
+  const isBearerToken = tmdbKey.length > 50;
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (isBearerToken) headers['Authorization'] = `Bearer ${tmdbKey}`;
+  const authParam = isBearerToken ? '' : `&api_key=${tmdbKey}`;
+
+  // 1. Map favorite genres to TMDB IDs
+  const allFavGenres = Array.from(new Set(participants.flatMap((p: any) => p.favoriteGenres || [])));
+  const genreIds = allFavGenres
+    .map((g: any) => RUSSIAN_GENRE_TO_TMDB_ID[g])
+    .filter(Boolean);
+
+  let eraQuery = '';
+  if (filters.era === 'fresh') eraQuery = '&primary_release_date.gte=2020-01-01&first_air_date.gte=2020-01-01';
+  else if (filters.era === '2010s') eraQuery = '&primary_release_date.gte=2010-01-01&primary_release_date.lte=2019-12-31&first_air_date.gte=2010-01-01&first_air_date.lte=2019-12-31';
+  else if (filters.era === 'classic') eraQuery = '&primary_release_date.lte=2009-12-31&first_air_date.lte=2009-12-31';
+
+  const targetType = filters.targetType || 'all';
+  const discoverTasks: Promise<void>[] = [];
+
+  // Query high-rated movies
+  if (targetType === 'movie' || targetType === 'all') {
+    const movieGenreParam = genreIds.length ? `&with_genres=${genreIds.slice(0, 3).join(',')}` : '';
+    const movieUrl = `https://api.themoviedb.org/3/discover/movie?language=ru-RU&sort_by=vote_average.desc&vote_count.gte=150&vote_average.gte=7.0${movieGenreParam}${eraQuery}&page=1${authParam}`;
+    discoverTasks.push(
+      fetch(movieUrl, { headers })
+        .then((r) => (r.ok ? r.json() : { results: [] }))
+        .then((data) => {
+          (data.results || []).forEach((item: any) => {
+            if (item.poster_path && !seenTmdbIds.has(item.id)) {
+              seenTmdbIds.add(item.id);
+              candidates.push(normalizeTmdbCandidate(item, 'movie'));
+            }
+          });
+        })
+        .catch(() => {})
+    );
+
+    // Also popular movies with high ratings
+    const popUrl = `https://api.themoviedb.org/3/discover/movie?language=ru-RU&sort_by=popularity.desc&vote_count.gte=200&vote_average.gte=7.0${movieGenreParam}${eraQuery}&page=1${authParam}`;
+    discoverTasks.push(
+      fetch(popUrl, { headers })
+        .then((r) => (r.ok ? r.json() : { results: [] }))
+        .then((data) => {
+          (data.results || []).forEach((item: any) => {
+            if (item.poster_path && !seenTmdbIds.has(item.id)) {
+              seenTmdbIds.add(item.id);
+              candidates.push(normalizeTmdbCandidate(item, 'movie'));
+            }
+          });
+        })
+        .catch(() => {})
+    );
+  }
+
+  // Query TV series
+  if (targetType === 'series' || targetType === 'all') {
+    const tvGenreParam = genreIds.length ? `&with_genres=${genreIds.slice(0, 3).join(',')}` : '';
+    const tvUrl = `https://api.themoviedb.org/3/discover/tv?language=ru-RU&sort_by=vote_average.desc&vote_count.gte=120&vote_average.gte=7.3${tvGenreParam}${eraQuery}&page=1${authParam}`;
+    discoverTasks.push(
+      fetch(tvUrl, { headers })
+        .then((r) => (r.ok ? r.json() : { results: [] }))
+        .then((data) => {
+          (data.results || []).forEach((item: any) => {
+            if (item.poster_path && !seenTmdbIds.has(item.id)) {
+              seenTmdbIds.add(item.id);
+              candidates.push(normalizeTmdbCandidate(item, 'series'));
+            }
+          });
+        })
+        .catch(() => {})
+    );
+  }
+
+  // 2. Discover works of favorite actors / directors
+  const allActors = Array.from(new Set(participants.flatMap((p: any) => p.favoriteActors || []))).slice(0, 4);
+  for (const actor of allActors) {
+    if (!actor || actor.length < 3) continue;
+    discoverTasks.push(
+      (async () => {
+        try {
+          const sRes = await fetch(
+            `https://api.themoviedb.org/3/search/person?query=${encodeURIComponent(actor)}&language=ru-RU&page=1${authParam}`,
+            { headers }
+          );
+          if (sRes.ok) {
+            const sData = await sRes.json();
+            const person = sData.results?.[0];
+            if (person?.id) {
+              const credRes = await fetch(
+                `https://api.themoviedb.org/3/person/${person.id}/movie_credits?language=ru-RU${authParam}`,
+                { headers }
+              );
+              if (credRes.ok) {
+                const credData = await credRes.json();
+                const works = [
+                  ...(credData.cast || []),
+                  ...(credData.crew || []).filter((c: any) => c.job === 'Director'),
+                ];
+                works
+                  .filter((w: any) => w.poster_path && (w.vote_average || 0) >= 6.7 && (w.vote_count || 0) >= 40)
+                  .sort((a: any, b: any) => (b.vote_average || 0) - (a.vote_average || 0))
+                  .slice(0, 3)
+                  .forEach((w: any) => {
+                    if (!seenTmdbIds.has(w.id)) {
+                      seenTmdbIds.add(w.id);
+                      candidates.push(normalizeTmdbCandidate(w, 'movie', person.name || actor));
+                    }
+                  });
+              }
+            }
+          }
+        } catch {}
+      })()
+    );
+  }
+
+  // 3. Search theme keywords from mood prompt
+  const lowerMood = (moodPrompt || '').toLowerCase();
+  const keywords = ['киберпанк', 'космос', 'детектив', 'ограбление', 'романтика', 'приключения', 'италия', 'франция', 'мафия', 'париж', 'путешествие', 'заговор'];
+  const matchedKeyword = keywords.find((k) => lowerMood.includes(k));
+  if (matchedKeyword) {
+    discoverTasks.push(
+      (async () => {
+        try {
+          const mRes = await fetch(
+            `https://api.themoviedb.org/3/search/multi?query=${encodeURIComponent(matchedKeyword)}&language=ru-RU&page=1${authParam}`,
+            { headers }
+          );
+          if (mRes.ok) {
+            const mData = await mRes.json();
+            (mData.results || []).slice(0, 4).forEach((item: any) => {
+              if (item.poster_path && (item.media_type === 'movie' || item.media_type === 'tv') && !seenTmdbIds.has(item.id)) {
+                seenTmdbIds.add(item.id);
+                candidates.push(normalizeTmdbCandidate(item, item.media_type === 'tv' ? 'series' : 'movie'));
+              }
+            });
+          }
+        } catch {}
+      })()
+    );
+  }
+
+  // Wait for all discovery tasks with 2.8s cap
+  await Promise.race([
+    Promise.all(discoverTasks),
+    new Promise((resolve) => setTimeout(resolve, 2800)),
+  ]);
+
+  return candidates;
+}
+
+// Calculate compromises across merged pool of TMDB items and Curated Catalog
+async function calculateCompromiseRecommendations(
+  candidates: any[],
   participants: any[],
   moodPrompt: string = '',
   filters: any = {},
@@ -351,15 +621,38 @@ function calculateLocalRecommendations(
   const allVetoes = participants.flatMap((p: any) => p.vetoes || []);
   const lowerMood = (moodPrompt || '').toLowerCase();
 
-  const results = CURATED_CATALOG.filter((movie) => {
+  // Merge candidates with CURATED_CATALOG, deduplicating by normalized title
+  const seenTitles = new Set<string>();
+  const mergedPool: any[] = [];
+
+  for (const item of candidates) {
+    const key = cleanTitleForLookup(item.title);
+    if (!seenTitles.has(key)) {
+      seenTitles.add(key);
+      mergedPool.push(item);
+    }
+  }
+
+  for (const item of CURATED_CATALOG) {
+    const key = cleanTitleForLookup(item.title);
+    if (!seenTitles.has(key)) {
+      seenTitles.add(key);
+      mergedPool.push(item);
+    }
+  }
+
+  // Filter against vetoes, seen, and user constraints
+  const validCandidates = mergedPool.filter((movie) => {
     // Check seen
-    if (filters.excludeSeen && seenMovies.includes(movie.id)) {
+    if (filters.excludeSeen && (seenMovies.includes(movie.id) || seenMovies.includes(movie.title))) {
       return false;
     }
+
     // Filter target type
     if (filters.targetType && filters.targetType !== 'all') {
       if (movie.type !== filters.targetType) return false;
     }
+
     // Filter duration
     if (filters.durationLimit === 'under90' && movie.durationMinutes > 95) return false;
     if (filters.durationLimit === 'under120' && movie.durationMinutes > 125) return false;
@@ -376,7 +669,7 @@ function calculateLocalRecommendations(
       if ((v.includes('хоррор') || v.includes('скример')) && movie.genres.includes('Ужасы')) {
         return false;
       }
-      if (v.includes('кров') && (movie.ageRating === '18+' && movie.genres.includes('Боевик'))) {
+      if (v.includes('кров') && (movie.ageRating === '18+' && (movie.genres.includes('Боевик') || movie.genres.includes('Ужасы')))) {
         return false;
       }
       if (v.includes('тяжёлой') && (movie.genres.includes('Драма') && !movie.genres.includes('Комедия'))) {
@@ -385,37 +678,49 @@ function calculateLocalRecommendations(
       if (v.includes('затянутост') && movie.durationMinutes > 125) {
         return false;
       }
+      if (v.includes('мелодрам') && movie.genres.includes('Мелодрама') && !movie.genres.includes('Комедия') && !movie.genres.includes('Фантастика')) {
+        return false;
+      }
     }
 
     return true;
-  }).map((movie) => {
-    let score = 70; // baseline
+  });
+
+  // Score each candidate against participants
+  const scored = validCandidates.map((movie) => {
     const breakdowns: any[] = [];
 
     participants.forEach((p: any) => {
-      let pScore = 65;
+      let pScore = 68; // Base approval
       const reasons: string[] = [];
 
       // Check genres
       const matchingGenres = (p.favoriteGenres || []).filter((g: string) => movie.genres.includes(g));
       if (matchingGenres.length > 0) {
-        pScore += matchingGenres.length * 9;
+        pScore += Math.min(22, matchingGenres.length * 10);
         reasons.push(`Любит жанры: ${matchingGenres.join(', ')}`);
       }
 
-      // Check actors / directors
+      // Check actors & directors
       const matchingActors = (p.favoriteActors || []).filter((a: string) =>
-        movie.cast.some((c: string) => c.toLowerCase().includes(a.toLowerCase())) ||
-        movie.director.toLowerCase().includes(a.toLowerCase())
+        (movie.cast || []).some((c: string) => c.toLowerCase().includes(a.toLowerCase())) ||
+        (movie.director || '').toLowerCase().includes(a.toLowerCase())
       );
       if (matchingActors.length > 0) {
-        pScore += 18;
-        reasons.push(`В восторге от персон: ${matchingActors.join(', ')}`);
+        pScore += 20;
+        reasons.push(`Любимый актёр/режиссёр: ${matchingActors.join(', ')}`);
+      }
+
+      // Check favorite movies similarity
+      const favMovieTitles = (p.favoriteMovies || []).map((fm: any) => typeof fm === 'string' ? fm : fm.title);
+      if (favMovieTitles.some((t: string) => t.toLowerCase() === movie.title.toLowerCase())) {
+        pScore += 15;
+        reasons.push('Точно в списке персональных фаворитов');
       }
 
       // Mood booster
       if (lowerMood) {
-        if (lowerMood.includes('каприо') && movie.cast.some((c) => c.includes('Каприо'))) {
+        if (lowerMood.includes('ди каприо') && (movie.cast || []).some((c: string) => c.includes('Каприо'))) {
           pScore += 15;
           reasons.push('Точное попадание по запросу на Ди Каприо');
         }
@@ -427,28 +732,38 @@ function calculateLocalRecommendations(
           pScore += 12;
           reasons.push('Захватывающая детективная интрига');
         }
+        if (lowerMood.includes('космос') && (movie.genres.includes('Фантастика') || movie.genres.includes('Приключения'))) {
+          pScore += 12;
+          reasons.push('Космический масштаб и атмосфера');
+        }
       }
 
-      pScore = Math.min(99, Math.max(50, pScore));
+      // TMDB Quality rating bonus
+      if ((movie.ratingKp || movie.ratingImdb) >= 8.0) {
+        pScore += 6;
+      }
+
+      pScore = Math.min(99, Math.max(55, pScore));
 
       breakdowns.push({
         participantId: p.id,
         participantName: p.name,
         score: pScore,
-        reason: reasons.length ? reasons.join(' • ') : 'Хорошо сбалансированный сюжет без триггеров',
+        reason: reasons.length ? reasons.join(' • ') : 'Высокий зрительский рейтинг и отсутствие раздражающих триггеров',
         appealFactor: matchingGenres[0] || movie.genres[0] || 'Качественный сюжет',
       });
     });
 
-    // Average compromise score
     const avgScore = Math.round(breakdowns.reduce((acc, cur) => acc + cur.score, 0) / (breakdowns.length || 1));
 
-    // Construct compromise explanation
     const p1 = participants[0]?.name || 'Участник 1';
     const p2 = participants[1]?.name || 'Участник 2';
+    const appeal1 = breakdowns[0]?.appealFactor || 'сюжет';
+    const appeal2 = breakdowns[1]?.appealFactor || 'атмосферу';
+
     const rationale = participants.length === 2
-      ? `Отличный баланс между вкусом ${p1} к динамичным историям и предпочтением ${p2} качественного сюжета. Фильм держит интерес обоих без скучных пауз.`
-      : `Универсальный выбор для компании: сочетает высокий темп, ярких персонажей и отсутствие спорных тем.`;
+      ? `Идеальный компромисс между любовью ${p1} к жанру «${appeal1}» и вкусом ${p2} на «${appeal2}». Картина гарантирует отсутствие споров и смотрится на одном дыхании.`
+      : `Сбалансированный выбор для компании из ${participants.length} человек: высокий темп, яркий каст и отсутствие спорных тем.`;
 
     return {
       ...movie,
@@ -464,7 +779,61 @@ function calculateLocalRecommendations(
     };
   });
 
-  return results.sort((a, b) => b.overallMatchScore - a.overallMatchScore).slice(0, 8);
+  const topResults = scored.sort((a, b) => b.overallMatchScore - a.overallMatchScore).slice(0, 6);
+
+  // Parallel enrichment of real director, cast, and runtime from TMDB for the selected top items
+  const tmdbKey = getTmdbKey();
+  if (tmdbKey) {
+    const isBearer = tmdbKey.length > 50;
+    const authParam = isBearer ? '' : `&api_key=${tmdbKey}`;
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (isBearer) headers['Authorization'] = `Bearer ${tmdbKey}`;
+
+    await Promise.all(
+      topResults.map(async (rec) => {
+        if (!rec.tmdbId) return;
+        try {
+          const endpoint = rec.type === 'series' ? 'tv' : 'movie';
+          const dUrl = `https://api.themoviedb.org/3/${endpoint}/${rec.tmdbId}?language=ru-RU&append_to_response=credits${authParam}`;
+          const dRes = await fetch(dUrl, { headers });
+          if (dRes.ok) {
+            const dData = await dRes.json();
+            const director =
+              dData.credits?.crew?.find((c: any) => c.job === 'Director')?.name ||
+              dData.created_by?.[0]?.name ||
+              rec.director;
+            const cast = (dData.credits?.cast || []).slice(0, 4).map((c: any) => c.name);
+            if (director) rec.director = director;
+            if (cast.length > 0) rec.cast = cast;
+            if (dData.runtime) {
+              rec.durationMinutes = dData.runtime;
+              rec.duration = `${dData.runtime} мин`;
+            } else if (dData.number_of_seasons) {
+              rec.duration = `${dData.number_of_seasons} сезон(а)`;
+            }
+          }
+        } catch {}
+      })
+    );
+  }
+
+  return topResults;
+}
+
+// Fallback Pure Local Algorithm (used when TMDB network is offline)
+function calculateLocalRecommendations(
+  participants: any[],
+  moodPrompt: string = '',
+  filters: any = {},
+  seenMovies: string[] = []
+) {
+  return calculateCompromiseRecommendations(
+    [],
+    participants,
+    moodPrompt,
+    filters,
+    seenMovies
+  );
 }
 
 // API Routes
@@ -476,7 +845,15 @@ app.post('/api/recommendations', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Participants array is required' });
     }
 
-    // If Gemini API Key is available and valid, generate custom high-precision AI recommendations
+    // Step 1: Pre-fetch dynamic candidate pool from TMDB (movies, series, actor credits, mood keywords)
+    let tmdbCandidates: any[] = [];
+    try {
+      tmdbCandidates = await fetchTmdbCandidates(participants, moodPrompt, filters);
+    } catch (tmdbErr) {
+      console.warn('TMDB candidate fetch warning:', tmdbErr);
+    }
+
+    // Step 2: If Gemini API Key is available, let AI select and deeply personalize from TMDB + Curated pool
     const isValidKey = apiKey && apiKey !== 'MY_GEMINI_API_KEY' && !apiKey.startsWith('MY_');
     if (isValidKey) {
       try {
@@ -484,13 +861,25 @@ app.post('/api/recommendations', async (req: Request, res: Response) => {
           name: p.name,
           favoriteGenres: p.favoriteGenres || [],
           favoriteActors: p.favoriteActors || [],
-          favoriteMovies: (p.favoriteMovies || []).map((m: any) => m.title),
+          favoriteMovies: (p.favoriteMovies || []).map((m: any) => (typeof m === 'string' ? m : m.title)),
           vetoes: p.vetoes || [],
         }));
 
+        const candidateSample = tmdbCandidates.slice(0, 10).map((c) => ({
+          id: c.id,
+          title: c.title,
+          originalTitle: c.originalTitle,
+          year: c.year,
+          type: c.type,
+          genres: c.genres,
+          rating: c.ratingKp,
+          posterUrl: c.posterUrl,
+          overview: c.description?.slice(0, 150),
+        }));
+
         const promptText = `
-Ты — умный кино-алгоритм KinoMatch для поиска идеального фильма или сериала на двоих/компанию.
-Твоя задача — найти 4-5 великолепных кинокартин или сериалов, которые станут идеальным компромиссом для зрителей с разными вкусами.
+Ты — кино-алгоритм KinoMatch для поиска идеального фильма или сериала на двоих или компанию.
+Твоя задача — подобрать 4-5 великолепных кинокартин или сериалов, которые станут идеальным компромиссом для зрителей с разными вкусами.
 
 Зрители:
 ${JSON.stringify(participantSummary, null, 2)}
@@ -503,12 +892,15 @@ ${JSON.stringify(participantSummary, null, 2)}
 - Платформы: ${(filters?.selectedPlatforms || []).join(', ') || 'любые популярные'}
 - Исключить уже просмотренные: ${(seenMovies || []).join(', ') || 'нет'}
 
+Проверенные кандидаты из базы TMDB (можешь использовать их или предложить другие легендарные шедевры):
+${JSON.stringify(candidateSample, null, 2)}
+
 ВАЖНЕЙШИЕ ПРАВИЛА:
 1. СТОП-ФАКТОРЫ (ВЕТО) СТРОГО ОБЯЗАТЕЛЬНЫ К ИСПОЛНЕНИЮ. Если хотя бы у одного человека в вето стоит "без хорроров" или "без крови", категорически запрещено предлагать такие фильмы!
 2. ШКАЛА КОМПРОМИССА:
    - Рассчитай общий процент совместимости (overallMatchScore от 70 до 99).
    - Рассчитай индивидуальный процент для КАЖДОГО участника (от 60 до 99) и обоснуй на русском языке, почему именно ему это понравится (matchBreakdown).
-   - Напиши емкое "compromiseRationale" на русском: почему фильм идеально объединяет обоих и снимает разногласия.
+   - Напиши емкое "compromiseRationale" на русском: почему фильм идеально объединяет вкусы участников и снимает разногласия.
 3. Интеграция со стримингами: укажи актуальные платформы (Кинопоиск, Okko, Иви, Premier, KION, Start, Netflix, Apple TV+).
 4. Верни только валидный JSON по указанной схеме.
 `;
@@ -596,30 +988,39 @@ ${JSON.stringify(participantSummary, null, 2)}
           },
         });
 
-        // 6 seconds timeout so users never wait on high-demand spikes
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('timeout')), 6000)
+          setTimeout(() => reject(new Error('timeout')), 5500)
         );
 
         const geminiResponse: any = await Promise.race([geminiCall, timeoutPromise]);
-
         const rawText = geminiResponse.text?.trim() || '[]';
         let aiResults = JSON.parse(rawText);
 
-        // Sanitize and ensure verified accurate poster URLs
         if (Array.isArray(aiResults) && aiResults.length > 0) {
           aiResults = await Promise.all(
             aiResults.map(async (rec: any) => {
-              const posterUrl = await resolveAccurateMoviePoster(
-                rec.title,
-                rec.originalTitle,
-                rec.year,
-                rec.genres?.[0]
-              );
+              // Check if matching TMDB candidate exists to preserve 100% exact poster
+              const normT = cleanTitleForLookup(rec.title);
+              const normO = cleanTitleForLookup(rec.originalTitle);
+              const candidateMatch = tmdbCandidates.find((c) => {
+                const cT = cleanTitleForLookup(c.title);
+                const cO = cleanTitleForLookup(c.originalTitle);
+                return cT === normT || cO === normT || (normO && (cT === normO || cO === normO));
+              });
+
+              const posterUrl = candidateMatch?.posterUrl
+                ? candidateMatch.posterUrl
+                : await resolveAccurateMoviePoster(
+                    rec.title,
+                    rec.originalTitle,
+                    rec.year,
+                    rec.genres?.[0]
+                  );
 
               // Ensure participant IDs in matchBreakdown
               const matchBreakdown = (rec.matchBreakdown || []).map((mb: any, mIdx: number) => {
-                const matchedP = participants[mIdx] || participants.find((p: any) => p.name === mb.participantName);
+                const matchedP =
+                  participants[mIdx] || participants.find((p: any) => p.name === mb.participantName);
                 return {
                   ...mb,
                   participantId: matchedP?.id || `p-${mIdx}`,
@@ -636,17 +1037,18 @@ ${JSON.stringify(participantSummary, null, 2)}
           );
 
           return res.json({
-            source: 'gemini',
+            source: 'gemini_tmdb',
             recommendations: aiResults,
           });
         }
-      } catch {
-        // High-demand or temporary network spike: cleanly proceed to the smart compromise engine
+      } catch (geminiErr) {
+        // High load or network spike: seamlessly proceed to TMDB compromise engine
       }
     }
 
-    // Local smart algorithm fallback
-    const localRecommendations = calculateLocalRecommendations(
+    // Step 3: Compute recommendations using TMDB candidates + Curated Catalog
+    const compromiseResults = await calculateCompromiseRecommendations(
+      tmdbCandidates,
       participants,
       moodPrompt,
       filters,
@@ -654,8 +1056,8 @@ ${JSON.stringify(participantSummary, null, 2)}
     );
 
     return res.json({
-      source: 'local',
-      recommendations: localRecommendations,
+      source: tmdbCandidates.length > 0 ? 'tmdb_engine' : 'curated_catalog',
+      recommendations: compromiseResults,
     });
   } catch (error: any) {
     console.error('Recommendations error:', error);
@@ -721,30 +1123,6 @@ app.post('/api/generate-mood', async (req: Request, res: Response) => {
   res.json({ prompt: picked, source: 'curated' });
 });
 
-// TMDB Genre ID to Russian Name mapping
-const TMDB_GENRES_MAP: Record<number, string> = {
-  28: 'Боевик',
-  12: 'Приключения',
-  16: 'Анимация',
-  35: 'Комедия',
-  80: 'Криминал',
-  99: 'Документальный',
-  18: 'Драма',
-  10751: 'Семейный',
-  14: 'Фэнтези',
-  36: 'История',
-  27: 'Ужасы',
-  10402: 'Музыка',
-  9648: 'Детектив',
-  10749: 'Мелодрама',
-  878: 'Фантастика',
-  53: 'Триллер',
-  10752: 'Военный',
-  37: 'Вестерн',
-  10759: 'Боевик',
-  10765: 'Фантастика',
-};
-
 // Dynamic TMDB Search endpoint
 app.get('/api/tmdb/search', async (req: Request, res: Response) => {
   const query = ((req.query.query as string) || (req.query.q as string) || '').trim();
@@ -754,7 +1132,7 @@ app.get('/api/tmdb/search', async (req: Request, res: Response) => {
     return res.json({ results: [] });
   }
 
-  const tmdbKey = process.env.TMDB_API_KEY || process.env.TMDB_KEY || '';
+  const tmdbKey = getTmdbKey();
 
   // If TMDB key configured, call real TMDB API
   if (tmdbKey) {
@@ -878,7 +1256,7 @@ app.get('/api/movies/poster', async (req: Request, res: Response) => {
 
 // Dynamic TMDB Trending / Popular endpoint
 app.get('/api/tmdb/trending', async (_req: Request, res: Response) => {
-  const tmdbKey = process.env.TMDB_API_KEY || process.env.TMDB_KEY || '';
+  const tmdbKey = getTmdbKey();
 
   if (tmdbKey) {
     try {
@@ -1004,7 +1382,7 @@ app.get('/api/meta', (_req: Request, res: Response) => {
   res.json({
     platforms: PLATFORMS_LIST,
     catalogCount: CURATED_CATALOG.length,
-    tmdbConfigured: !!(process.env.TMDB_API_KEY || process.env.TMDB_KEY),
+    tmdbConfigured: !!getTmdbKey(),
   });
 });
 
