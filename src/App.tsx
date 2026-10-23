@@ -92,16 +92,117 @@ const INITIAL_DIARY: DiaryEntry[] = [
   },
 ];
 
+const STORAGE_KEYS = {
+  PARTICIPANTS: 'kinomatch_v3_participants',
+  FILTERS: 'kinomatch_v3_filters',
+  DIARY: 'kinomatch_v3_diary',
+  ACHIEVEMENTS: 'kinomatch_v3_achievements',
+  RATINGS: 'kinomatch_v3_ratings',
+  WATCHLIST: 'kinomatch_v3_watchlist',
+  ACTIVE_PARTICIPANT: 'kinomatch_v3_active_participant',
+  RECS: 'kinomatch_last_recs',
+};
+
+function loadStoredParticipants(): UserParticipant[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.PARTICIPANTS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((p) => ({
+          ...p,
+          favoriteGenres: Array.isArray(p.favoriteGenres) ? p.favoriteGenres : [],
+          favoriteMovies: Array.isArray(p.favoriteMovies) ? p.favoriteMovies : [],
+          favoriteActors: Array.isArray(p.favoriteActors) ? p.favoriteActors : [],
+          vetoes: Array.isArray(p.vetoes) ? p.vetoes : [],
+        }));
+      }
+    }
+  } catch (e) {
+    console.warn('Storage read participants error:', e);
+  }
+  return INITIAL_PARTICIPANTS;
+}
+
+function loadStoredFilters(): SessionFilterOptions {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.FILTERS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { ...INITIAL_FILTERS, ...parsed };
+    }
+  } catch {}
+  return INITIAL_FILTERS;
+}
+
+function loadStoredDiary(): DiaryEntry[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.DIARY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return INITIAL_DIARY;
+}
+
+function loadStoredAchievements(): AchievementBadge[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.ACHIEVEMENTS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Merge with any newly added achievements
+        return INITIAL_ACHIEVEMENTS.map((base) => {
+          const found = parsed.find((p: any) => p.id === base.id);
+          return found ? { ...base, ...found } : base;
+        });
+      }
+    }
+  } catch {}
+  return INITIAL_ACHIEVEMENTS;
+}
+
+function loadStoredRatings(): Record<string, Record<string, number>> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.RATINGS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch {}
+  return { 'knives-out': { 'user-1': 5, 'user-2': 4 } };
+}
+
+function loadStoredWatchlist(): MovieRecommendation[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.WATCHLIST);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+function loadStoredActiveParticipantId(): string {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.ACTIVE_PARTICIPANT);
+    if (raw) return raw;
+  } catch {}
+  return 'user-1';
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<MainTabType>('feed');
-  const [participants, setParticipants] = useState<UserParticipant[]>(INITIAL_PARTICIPANTS);
-  const [activeParticipantId, setActiveParticipantId] = useState<string>('user-1');
-  const [filters, setFilters] = useState<SessionFilterOptions>(INITIAL_FILTERS);
+  const [participants, setParticipants] = useState<UserParticipant[]>(loadStoredParticipants);
+  const [activeParticipantId, setActiveParticipantId] = useState<string>(loadStoredActiveParticipantId);
+  const [filters, setFilters] = useState<SessionFilterOptions>(loadStoredFilters);
 
   // Recommendations state
   const [recommendations, setRecommendations] = useState<MovieRecommendation[]>(() => {
     try {
-      const saved = localStorage.getItem('kinomatch_last_recs');
+      const saved = localStorage.getItem(STORAGE_KEYS.RECS);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -111,22 +212,20 @@ export default function App() {
   const [isDataFromCache, setIsDataFromCache] = useState<boolean>(false);
 
   // Watchlist & Selected
-  const [watchlist, setWatchlist] = useState<MovieRecommendation[]>([]);
+  const [watchlist, setWatchlist] = useState<MovieRecommendation[]>(loadStoredWatchlist);
   const [confirmedChoice, setConfirmedChoice] = useState<MovieRecommendation | null>(null);
   const [isWatchlistOpen, setIsWatchlistOpen] = useState<boolean>(false);
 
   // Ratings State: movieId -> (participantId -> 1..5)
-  const [movieRatings, setMovieRatings] = useState<Record<string, Record<string, number>>>({
-    'knives-out': { 'user-1': 5, 'user-2': 4 },
-  });
+  const [movieRatings, setMovieRatings] = useState<Record<string, Record<string, number>>>(loadStoredRatings);
 
   // Diary State
-  const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>(INITIAL_DIARY);
+  const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>(loadStoredDiary);
   const [isDiaryOpen, setIsDiaryOpen] = useState<boolean>(false);
   const [pendingMovieForDiary, setPendingMovieForDiary] = useState<MovieRecommendation | null>(null);
 
   // Achievements State
-  const [achievements, setAchievements] = useState<AchievementBadge[]>(INITIAL_ACHIEVEMENTS);
+  const [achievements, setAchievements] = useState<AchievementBadge[]>(loadStoredAchievements);
   const [isAchievementsOpen, setIsAchievementsOpen] = useState<boolean>(false);
 
   // Modals & Effects
@@ -138,8 +237,53 @@ export default function App() {
   const [bannedTitles, setBannedTitles] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Save changes persistently so they never reset on updates or reloads
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.PARTICIPANTS, JSON.stringify(participants));
+    } catch (e) {
+      console.warn('Could not persist participants:', e);
+    }
+  }, [participants]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.FILTERS, JSON.stringify(filters));
+    } catch {}
+  }, [filters]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.DIARY, JSON.stringify(diaryEntries));
+    } catch {}
+  }, [diaryEntries]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.ACHIEVEMENTS, JSON.stringify(achievements));
+    } catch {}
+  }, [achievements]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.RATINGS, JSON.stringify(movieRatings));
+    } catch {}
+  }, [movieRatings]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.WATCHLIST, JSON.stringify(watchlist));
+    } catch {}
+  }, [watchlist]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_PARTICIPANT, activeParticipantId);
+    } catch {}
+  }, [activeParticipantId]);
+
   const activeParticipant =
-    participants.find((p) => p.id === activeParticipantId) || participants[0];
+    participants.find((p) => p.id === activeParticipantId) || participants[0] || INITIAL_PARTICIPANTS[0];
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
