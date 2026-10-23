@@ -1,6 +1,11 @@
 @import "tailwindcss";
 
 @layer base {
+  html, body, #root {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   }
@@ -8,6 +13,14 @@
   h1, h2, h3, .font-heading {
     font-family: 'Unbounded', 'Plus Jakarta Sans', sans-serif;
   }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Custom scrollbars for poster rows */

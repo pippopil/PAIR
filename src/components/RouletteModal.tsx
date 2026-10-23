@@ -94,7 +94,17 @@ export const RouletteModal: React.FC<RouletteModalProps> = ({
               <img
                 src={candidates[selectedIndex].posterUrl}
                 alt={candidates[selectedIndex].title}
-                className={`w-28 sm:w-32 aspect-[2/3] object-cover rounded-xl shadow-xl transition-all duration-200 ${
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  if (!target.dataset.tried) {
+                    target.dataset.tried = 'true';
+                    fetch(`/api/movies/poster?title=${encodeURIComponent(candidates[selectedIndex].title)}`)
+                      .then((r) => r.json())
+                      .then((d) => { if (d.posterUrl) target.src = d.posterUrl; })
+                      .catch(() => {});
+                  }
+                }}
+                className={`w-28 sm:w-32 aspect-[2/3] object-cover rounded-xl shadow-xl transition-all duration-200 bg-slate-900 ${
                   isSpinning
                     ? 'scale-95 blur-[0.6px] border border-amber-500'
                     : 'scale-100 border-2 border-amber-400 shadow-amber-500/30'

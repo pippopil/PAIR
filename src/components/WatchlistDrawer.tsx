@@ -82,7 +82,17 @@ export const WatchlistDrawer: React.FC<WatchlistDrawerProps> = ({
                   <img
                     src={movie.posterUrl}
                     alt={movie.title}
-                    className="w-12 h-16 object-cover rounded-xl shrink-0"
+                    className="w-12 h-16 object-cover rounded-xl shrink-0 bg-slate-900 border border-slate-800"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      if (!target.dataset.tried) {
+                        target.dataset.tried = 'true';
+                        fetch(`/api/movies/poster?title=${encodeURIComponent(movie.title)}`)
+                          .then((r) => r.json())
+                          .then((d) => { if (d.posterUrl) target.src = d.posterUrl; })
+                          .catch(() => {});
+                      }
+                    }}
                   />
                   <div className="min-w-0">
                     <h5 className="font-heading font-bold text-xs text-slate-100 truncate">

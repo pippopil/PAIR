@@ -13,6 +13,7 @@ import { AchievementsModal } from './components/AchievementsModal';
 import { ShareRoomModal } from './components/ShareRoomModal';
 import { WatchlistDrawer } from './components/WatchlistDrawer';
 import { Confetti } from './components/Confetti';
+import { PWAManager } from './components/PWAManager';
 import {
   UserParticipant,
   MovieRecommendation,
@@ -80,8 +81,7 @@ const INITIAL_DIARY: DiaryEntry[] = [
     title: '1+1 (Неприкасаемые)',
     year: 2011,
     genres: ['Комедия', 'Драма', 'Биография'],
-    posterUrl:
-      'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=500&q=80',
+    posterUrl: 'https://image.tmdb.org/t/p/w500/zQsq95pYgjhJwYKqoFdeXlVse88.jpg',
     date: '18 октября',
     ratings: {
       'user-1': { rating: 5, name: 'Алексей', avatar: '👨‍💻' },
@@ -99,8 +99,16 @@ export default function App() {
   const [filters, setFilters] = useState<SessionFilterOptions>(INITIAL_FILTERS);
 
   // Recommendations state
-  const [recommendations, setRecommendations] = useState<MovieRecommendation[]>([]);
+  const [recommendations, setRecommendations] = useState<MovieRecommendation[]>(() => {
+    try {
+      const saved = localStorage.getItem('kinomatch_last_recs');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isDataFromCache, setIsDataFromCache] = useState<boolean>(false);
 
   // Watchlist & Selected
   const [watchlist, setWatchlist] = useState<MovieRecommendation[]>([]);
@@ -230,23 +238,61 @@ export default function App() {
         }),
       });
 
-      if (!response.ok) {
+      const fromCacheHeader =
+        response.headers.get('X-From-Cache') === 'true' ||
+        response.headers.get('X-Offline-Mode') === 'true' ||
+        !navigator.onLine;
+
+      if (!response.ok && !fromCacheHeader) {
         throw new Error('Не удалось получить рекомендации');
       }
 
       const data = await response.json();
-      const list: MovieRecommendation[] = (data.recommendations || []).filter(
+      let list: MovieRecommendation[] = (data.recommendations || []).filter(
         (m: MovieRecommendation) => !bannedTitles.includes(m.id)
       );
 
-      setRecommendations(list);
-
-      if (list.some((m) => m.overallMatchScore >= 85)) {
-        unlockAchievement('first-match');
+      // If empty offline response, recover from localStorage
+      if (list.length === 0) {
+        const saved = localStorage.getItem('kinomatch_last_recs');
+        if (saved) {
+          try {
+            list = JSON.parse(saved);
+          } catch {}
+        }
       }
 
-      showToast(`Подобрано ${list.length} компромиссных вариантов 🎯`);
+      if (list.length > 0) {
+        setRecommendations(list);
+        try {
+          localStorage.setItem('kinomatch_last_recs', JSON.stringify(list));
+        } catch {}
+      }
+
+      setIsDataFromCache(fromCacheHeader || !navigator.onLine);
+
+      if (fromCacheHeader || !navigator.onLine) {
+        showToast('Офлайн: показаны сохранённые фильмы из кэша 📡');
+      } else {
+        if (list.some((m) => m.overallMatchScore >= 85)) {
+          unlockAchievement('first-match');
+        }
+        showToast(`Подобрано ${list.length} компромиссных вариантов 🎯`);
+      }
     } catch {
+      // LocalStorage fallback when offline without service worker cache
+      const saved = localStorage.getItem('kinomatch_last_recs');
+      if (saved) {
+        try {
+          const list = JSON.parse(saved);
+          if (list.length > 0) {
+            setRecommendations(list);
+            setIsDataFromCache(true);
+            showToast('Офлайн-режим: загружены сохранённые рекомендации');
+            return;
+          }
+        } catch {}
+      }
       showToast('Использован встроенный умный каталог');
     } finally {
       setIsLoading(false);
@@ -379,10 +425,10 @@ export default function App() {
   const unlockedAchievementsCount = achievements.filter((a) => a.unlocked).length;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased w-full max-w-full overflow-x-hidden">
       <Confetti active={showConfetti} onComplete={() => setShowConfetti(false)} />
 
-      {/* Streamlined Minimal Header */}
+      {/* Streamlined Minimal Header with PWA Install / Updates / Offline slot */}
       <Header
         mode={filters.mode}
         onModeChange={handleModeChange}
@@ -391,6 +437,7 @@ export default function App() {
         onOpenWatchlist={() => setIsWatchlistOpen(true)}
         onShareRoom={handleShareRoom}
         hasCopied={hasCopied}
+        pwaInstallSlot={<PWAManager isDataFromCache={isDataFromCache} />}
       />
 
       {/* Intuitive 3-Tab Navigation Bar */}
@@ -405,14 +452,14 @@ export default function App() {
 
       {/* Toast notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-rose-500/40 text-slate-100 text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-rose-500/40 text-slate-100 text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200 max-w-[90vw]">
           <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-          <span>{toastMessage}</span>
+          <span className="truncate">{toastMessage}</span>
         </div>
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-6">
+      <main className="flex-1 max-w-5xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 overflow-x-hidden">
         {/* TAB 1: MOVIE FEED & QUICK SEARCH */}
         {activeTab === 'feed' && (
           <div className="space-y-6">

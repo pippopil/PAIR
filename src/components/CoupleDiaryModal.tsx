@@ -86,7 +86,7 @@ export const CoupleDiaryModal: React.FC<CoupleDiaryModalProps> = ({
     }
   }
 
-  const handleSaveEntry = (e: React.FormEvent) => {
+  const handleSaveEntry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
 
@@ -103,13 +103,22 @@ export const CoupleDiaryModal: React.FC<CoupleDiaryModalProps> = ({
 
     const averageRating = count > 0 ? Number((sum / count).toFixed(1)) : 5;
 
+    let posterUrl = newPoster;
+    if (!posterUrl) {
+      try {
+        const res = await fetch(`/api/movies/poster?title=${encodeURIComponent(newTitle.trim())}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.posterUrl) posterUrl = data.posterUrl;
+        }
+      } catch {}
+    }
+
     const newEntry: DiaryEntry = {
       id: `diary-${Date.now()}`,
       movieId: pendingMovieToAdd?.id || `custom-${Date.now()}`,
       title: newTitle.trim(),
-      posterUrl:
-        newPoster ||
-        'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=500&q=80',
+      posterUrl: posterUrl || '/icon.svg',
       year: newYear,
       genres: pendingMovieToAdd?.genres || ['Кино'],
       date: new Date().toLocaleDateString('ru-RU', {

@@ -164,7 +164,7 @@ export const QuickMoodBar: React.FC<QuickMoodBarProps> = ({
         </div>
 
         {/* Fast Decision Helpers: Roulette & Blitz */}
-        <div className="flex items-center gap-1.5 ml-auto">
+        <div className="flex items-center justify-between sm:justify-end gap-1.5 w-full sm:w-auto pt-1 sm:pt-0">
           <button
             type="button"
             onClick={onOpenRoulette}

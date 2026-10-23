@@ -26,6 +26,150 @@ const ai = new GoogleGenAI({
   },
 });
 
+// Accurate Movie Poster Resolver & In-Memory Cache
+const POSTER_CACHE = new Map<string, string>();
+
+function generateSvgPoster(title: string, year?: number, genre?: string): string {
+  const cleanTitle = (title || 'Кино').replace(/[<>&"]/g, '');
+  const subText = [year, genre].filter(Boolean).join(' • ');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="500" height="750" viewBox="0 0 500 750">
+    <defs>
+      <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#0f172a"/>
+        <stop offset="50%" stop-color="#1e1b4b"/>
+        <stop offset="100%" stop-color="#020617"/>
+      </linearGradient>
+    </defs>
+    <rect width="100%" height="100%" fill="url(#bg)"/>
+    <circle cx="250" cy="280" r="90" fill="#f43f5e" opacity="0.15"/>
+    <text x="250" y="295" font-family="system-ui, sans-serif" font-size="72" text-anchor="middle" fill="#ffffff">🎬</text>
+    <text x="250" y="450" font-family="system-ui, sans-serif" font-size="28" font-weight="bold" fill="#ffffff" text-anchor="middle">
+      ${cleanTitle.length > 22 ? cleanTitle.slice(0, 21) + '...' : cleanTitle}
+    </text>
+    <text x="250" y="490" font-family="system-ui, sans-serif" font-size="18" fill="#94a3b8" text-anchor="middle">
+      ${subText || 'Кинофильм'}
+    </text>
+    <rect x="175" y="530" width="150" height="32" rx="16" fill="#f43f5e" opacity="0.2"/>
+    <text x="250" y="552" font-family="system-ui, sans-serif" font-size="13" font-weight="600" fill="#fda4af" text-anchor="middle">KinoMatch</text>
+  </svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+async function fetchWikipediaPoster(title: string, originalTitle?: string): Promise<string | null> {
+  const candidates = [
+    `${title} (фильм)`,
+    `${title} (телесериал)`,
+    `${title} (мультфильм)`,
+    `${title} (мини-сериал)`,
+    title,
+  ];
+  if (originalTitle && originalTitle.toLowerCase() !== title.toLowerCase()) {
+    candidates.push(`${originalTitle} (film)`, `${originalTitle} (TV series)`, originalTitle);
+  }
+
+  const headers = { 'User-Agent': 'KinoMatchBot/1.0 (https://kinomatch.app; info@kinomatch.app)' };
+
+  for (const query of candidates) {
+    try {
+      const res = await fetch(`https://ru.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const src = data.thumbnail?.source;
+        if (src && !src.includes('Disambig') && !src.includes('Question_book') && !src.includes('Wiki_letter')) {
+          return src;
+        }
+      }
+    } catch {
+      // Continue next candidate
+    }
+  }
+
+  if (originalTitle) {
+    try {
+      const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(originalTitle)}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const src = data.thumbnail?.source;
+        if (src && !src.includes('Disambig') && !src.includes('Question_book') && !src.includes('Wiki_letter')) {
+          return src;
+        }
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+export async function resolveAccurateMoviePoster(
+  title: string,
+  originalTitle?: string,
+  year?: number,
+  genre?: string
+): Promise<string> {
+  if (!title) return generateSvgPoster('Кино', year, genre);
+
+  const cleanTitle = title.trim();
+  const normKey = cleanTitle.toLowerCase();
+
+  if (POSTER_CACHE.has(normKey)) {
+    return POSTER_CACHE.get(normKey)!;
+  }
+
+  // 1. Check curated catalog for exact or original title match
+  const curatedMatch = CURATED_CATALOG.find((c) => {
+    const cTitle = c.title.toLowerCase();
+    const cOrig = c.originalTitle.toLowerCase();
+    return (
+      cTitle === normKey ||
+      cOrig === normKey ||
+      (originalTitle && (cOrig === originalTitle.toLowerCase().trim() || cTitle === originalTitle.toLowerCase().trim()))
+    );
+  });
+
+  if (curatedMatch?.posterUrl) {
+    POSTER_CACHE.set(normKey, curatedMatch.posterUrl);
+    return curatedMatch.posterUrl;
+  }
+
+  // 2. Query TMDB if API key is configured
+  const tmdbKey = process.env.TMDB_API_KEY || process.env.TMDB_KEY || '';
+  if (tmdbKey) {
+    try {
+      const isBearerToken = tmdbKey.length > 50;
+      const searchTarget = encodeURIComponent(cleanTitle);
+      const url = `https://api.themoviedb.org/3/search/multi?query=${searchTarget}&language=ru-RU&page=1${
+        isBearerToken ? '' : `&api_key=${tmdbKey}`
+      }`;
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (isBearerToken) headers['Authorization'] = `Bearer ${tmdbKey}`;
+      const res = await fetch(url, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const matchedItem = (data.results || []).find((r: any) => r.poster_path);
+        if (matchedItem?.poster_path) {
+          const poster = `https://image.tmdb.org/t/p/w500${matchedItem.poster_path}`;
+          POSTER_CACHE.set(normKey, poster);
+          return poster;
+        }
+      }
+    } catch {
+      // Fall through to Wikipedia
+    }
+  }
+
+  // 3. Query Wikipedia API for exact real poster without needing any API key
+  const wikiPoster = await fetchWikipediaPoster(cleanTitle, originalTitle);
+  if (wikiPoster) {
+    POSTER_CACHE.set(normKey, wikiPoster);
+    return wikiPoster;
+  }
+
+  // 4. Default to branded SVG poster with exact movie title
+  const fallback = generateSvgPoster(cleanTitle, year, genre);
+  POSTER_CACHE.set(normKey, fallback);
+  return fallback;
+}
+
 // Fallback / Pure Local Algorithm
 function calculateLocalRecommendations(
   participants: any[],
@@ -291,35 +435,34 @@ ${JSON.stringify(participantSummary, null, 2)}
         const rawText = geminiResponse.text?.trim() || '[]';
         let aiResults = JSON.parse(rawText);
 
-        // Sanitize and ensure poster URLs
+        // Sanitize and ensure verified accurate poster URLs
         if (Array.isArray(aiResults) && aiResults.length > 0) {
-          aiResults = aiResults.map((rec: any, idx: number) => {
-            // Find existing curated match if available to preserve verified poster
-            const curatedMatch = CURATED_CATALOG.find(
-              (c) => c.title.toLowerCase() === rec.title.toLowerCase() ||
-                     c.originalTitle.toLowerCase() === (rec.originalTitle || '').toLowerCase()
-            );
+          aiResults = await Promise.all(
+            aiResults.map(async (rec: any) => {
+              const posterUrl = await resolveAccurateMoviePoster(
+                rec.title,
+                rec.originalTitle,
+                rec.year,
+                rec.genres?.[0]
+              );
 
-            const posterUrl = curatedMatch?.posterUrl ||
-              rec.posterUrl ||
-              CURATED_CATALOG[idx % CURATED_CATALOG.length]?.posterUrl;
+              // Ensure participant IDs in matchBreakdown
+              const matchBreakdown = (rec.matchBreakdown || []).map((mb: any, mIdx: number) => {
+                const matchedP = participants[mIdx] || participants.find((p: any) => p.name === mb.participantName);
+                return {
+                  ...mb,
+                  participantId: matchedP?.id || `p-${mIdx}`,
+                  participantName: mb.participantName || matchedP?.name || `Участник ${mIdx + 1}`,
+                };
+              });
 
-            // Ensure participant IDs in matchBreakdown
-            const matchBreakdown = (rec.matchBreakdown || []).map((mb: any, mIdx: number) => {
-              const matchedP = participants[mIdx] || participants.find((p: any) => p.name === mb.participantName);
               return {
-                ...mb,
-                participantId: matchedP?.id || `p-${mIdx}`,
-                participantName: mb.participantName || matchedP?.name || `Участник ${mIdx + 1}`,
+                ...rec,
+                posterUrl,
+                matchBreakdown,
               };
-            });
-
-            return {
-              ...rec,
-              posterUrl,
-              matchBreakdown,
-            };
-          });
+            })
+          );
 
           return res.json({
             source: 'gemini',
@@ -522,8 +665,9 @@ app.get('/api/tmdb/search', async (req: Request, res: Response) => {
     source: 'catalog',
   }));
 
-  // If query didn't match existing catalog items, generate a synthesized title card so user can still add it!
+  // If query didn't match existing catalog items, resolve genuine poster and generate a synthesized title card!
   if (matched.length === 0 && query.length >= 2) {
+    const posterUrl = await resolveAccurateMoviePoster(query);
     matched.push({
       id: `custom-${Date.now()}`,
       title: query,
@@ -532,13 +676,33 @@ app.get('/api/tmdb/search', async (req: Request, res: Response) => {
       type: 'movie',
       genres: ['Пользовательский выбор'],
       rating: 8.0,
-      posterUrl: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=500&q=80',
+      posterUrl,
       overview: `Добавлено пользователем: ${query}`,
       source: 'custom',
     });
   }
 
   res.json({ source: 'local_engine', results: matched });
+});
+
+// Accurate Movie Poster Endpoint (allows frontend to verify/fallback any poster)
+app.get('/api/movies/poster', async (req: Request, res: Response) => {
+  const title = ((req.query.title as string) || '').trim();
+  const originalTitle = ((req.query.originalTitle as string) || '').trim();
+  const year = req.query.year ? parseInt(req.query.year as string, 10) : undefined;
+  const genre = ((req.query.genre as string) || '').trim();
+
+  if (!title) {
+    return res.status(400).json({ error: 'Title parameter is required' });
+  }
+
+  try {
+    const posterUrl = await resolveAccurateMoviePoster(title, originalTitle, year, genre);
+    res.json({ title, originalTitle, posterUrl });
+  } catch (error) {
+    const fallback = generateSvgPoster(title, year, genre);
+    res.json({ title, posterUrl: fallback });
+  }
 });
 
 // Dynamic TMDB Trending / Popular endpoint

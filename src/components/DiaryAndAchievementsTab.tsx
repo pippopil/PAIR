@@ -166,6 +166,16 @@ export const DiaryAndAchievementsTab: React.FC<DiaryAndAchievementsTabProps> = (
                     src={entry.posterUrl}
                     alt={entry.title}
                     className="w-16 sm:w-20 aspect-[2/3] object-cover rounded-2xl border border-slate-800 shrink-0 bg-slate-950"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      if (!target.dataset.tried) {
+                        target.dataset.tried = 'true';
+                        fetch(`/api/movies/poster?title=${encodeURIComponent(entry.title)}`)
+                          .then((r) => r.json())
+                          .then((d) => { if (d.posterUrl) target.src = d.posterUrl; })
+                          .catch(() => {});
+                      }
+                    }}
                   />
                   <div className="flex-1 min-w-0 space-y-2">
                     <div className="flex items-center justify-between gap-2">

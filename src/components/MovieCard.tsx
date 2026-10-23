@@ -103,8 +103,16 @@ export const MovieCard: React.FC<MovieCardProps> = ({
               className="w-full h-full object-cover"
               loading="lazy"
               onError={(e) => {
-                (e.target as HTMLImageElement).src =
-                  'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=600&q=80';
+                const target = e.target as HTMLImageElement;
+                if (!target.dataset.triedFallback) {
+                  target.dataset.triedFallback = 'true';
+                  fetch(`/api/movies/poster?title=${encodeURIComponent(movie.title)}&originalTitle=${encodeURIComponent(movie.originalTitle || '')}`)
+                    .then((r) => r.json())
+                    .then((d) => {
+                      if (d.posterUrl) target.src = d.posterUrl;
+                    })
+                    .catch(() => {});
+                }
               }}
             />
             {movie.ageRating && (
@@ -357,41 +365,41 @@ export const MovieCard: React.FC<MovieCardProps> = ({
         </div>
 
         {/* Action Buttons Bar */}
-        <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
-          <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-1 w-full">
+          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
             <button
               type="button"
               onClick={() => onSelectAsChoice(movie)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shadow-lg cursor-pointer ${
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shadow-lg cursor-pointer ${
                 isCurrentChoice
                   ? 'bg-emerald-500 text-white shadow-emerald-500/20'
                   : 'bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white shadow-rose-500/20 active:scale-95'
               }`}
             >
-              <CheckCircle className="w-4 h-4" />
-              <span>{isCurrentChoice ? 'Выбрано для просмотра ✓' : 'Смотрим этот! 🎉'}</span>
+              <CheckCircle className="w-4 h-4 shrink-0" />
+              <span className="whitespace-nowrap">{isCurrentChoice ? 'Выбрано ✓' : 'Смотрим этот! 🎉'}</span>
             </button>
 
             {onAddToDiary && (
               <button
                 type="button"
                 onClick={() => onAddToDiary(movie)}
-                className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs text-amber-300 font-semibold transition-colors cursor-pointer"
+                className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs text-amber-300 font-semibold transition-colors cursor-pointer"
                 title="Добавить в Кинодневник пары"
               >
-                <BookOpen className="w-3.5 h-3.5 text-amber-400" />
-                <span>В дневник</span>
+                <BookOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="whitespace-nowrap">В дневник</span>
               </button>
             )}
 
             <button
               type="button"
               onClick={handleShare}
-              className="flex items-center gap-1 px-3 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 font-semibold transition-colors"
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 font-semibold transition-colors"
               title="Поделиться рекомендацией"
             >
-              <Share2 className="w-3.5 h-3.5 text-slate-400" />
-              <span>{copiedShare ? 'Скопировано!' : 'Поделиться'}</span>
+              <Share2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="whitespace-nowrap">{copiedShare ? 'Скопировано!' : 'Поделиться'}</span>
             </button>
           </div>
 
@@ -399,11 +407,11 @@ export const MovieCard: React.FC<MovieCardProps> = ({
           <button
             type="button"
             onClick={() => onApplyInstantVeto(movie)}
-            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-rose-950/30 hover:bg-rose-950/60 border border-rose-800/40 text-rose-300 text-xs font-semibold transition-colors cursor-pointer"
+            className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-rose-950/30 hover:bg-rose-950/60 border border-rose-800/40 text-rose-300 text-xs font-semibold transition-colors cursor-pointer"
             title="Исключить этот фильм и больше не предлагать"
           >
-            <ShieldBan className="w-3.5 h-3.5 text-rose-400" />
-            <span>Вето на фильм 🚫</span>
+            <ShieldBan className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+            <span className="whitespace-nowrap">Вето на фильм 🚫</span>
           </button>
         </div>
       </div>

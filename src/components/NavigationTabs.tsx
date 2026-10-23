@@ -21,8 +21,8 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
   unlockedBadgesCount,
 }) => {
   return (
-    <div className="w-full bg-slate-900/90 border-b border-slate-800/80 sticky top-[61px] z-20 backdrop-blur-md">
-      <div className="max-w-5xl mx-auto px-4 flex items-center justify-between sm:justify-start gap-1 sm:gap-4 overflow-x-auto no-scrollbar py-2">
+    <div className="w-full max-w-full bg-slate-900/90 border-b border-slate-800/80 sticky top-[53px] sm:top-[61px] z-20 backdrop-blur-md overflow-x-hidden">
+      <div className="max-w-5xl mx-auto px-2 sm:px-4 flex items-center justify-start gap-1.5 sm:gap-3 overflow-x-auto no-scrollbar py-2">
         {/* Tab 1: Feed */}
         <button
           type="button"

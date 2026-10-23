@@ -158,7 +158,17 @@ export const BlitzMatchModal: React.FC<BlitzMatchModalProps> = ({
               <img
                 src={currentMovie.posterUrl}
                 alt={currentMovie.title}
-                className="w-24 sm:w-28 aspect-[2/3] object-cover rounded-xl shrink-0 mx-auto sm:mx-0 shadow"
+                className="w-24 sm:w-28 aspect-[2/3] object-cover rounded-xl shrink-0 mx-auto sm:mx-0 shadow bg-slate-900 border border-slate-800"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  if (!target.dataset.tried) {
+                    target.dataset.tried = 'true';
+                    fetch(`/api/movies/poster?title=${encodeURIComponent(currentMovie.title)}`)
+                      .then((r) => r.json())
+                      .then((d) => { if (d.posterUrl) target.src = d.posterUrl; })
+                      .catch(() => {});
+                  }
+                }}
               />
               <div className="flex-1 flex flex-col justify-between">
                 <div>
